@@ -35,6 +35,8 @@ interface AppState {
     attachments: Attachment[];
     board_mm: { width: number; height: number };
     scale: "N" | "HO";
+    /** Strategy name if this layout came from the generator. */
+    generated_by?: string;
   };
   savedLayouts: SavedLayout[];
 
@@ -44,6 +46,8 @@ interface AppState {
   invMarkUsed: (code: string, qty: number) => void;
   invFreeUsed: (code: string, qty: number) => void;
   invAddSet: (code: string, qty: number) => string | null;
+  /** Replace the entire inventory atomically. Used for rollback. */
+  invReplace: (inv: Inventory) => void;
 
   // Layout ops
   layoutSetName: (name: string) => void;
@@ -85,6 +89,7 @@ export const useApp = create<AppState>()(
         set({ inventory: r.inventory });
         return r.warning ?? null;
       },
+      invReplace: (inv) => set({ inventory: inv }),
 
       layoutSetName: (name) =>
         set((s) => ({ workingLayout: { ...s.workingLayout, name } })),
@@ -110,17 +115,52 @@ export const useApp = create<AppState>()(
             ),
           },
         })),
-      layoutReset: () => set({ workingLayout: blankLayout() }),
+      layoutReset: () =>
+        set((s) => {
+          // Free inventory previously consumed by the current layout so
+          // resetting genuinely returns pieces to "available".
+          let inv = s.inventory;
+          const tally: Record<string, number> = {};
+          for (const p of s.workingLayout.placements) {
+            tally[p.code] = (tally[p.code] ?? 0) + 1;
+          }
+          for (const [code, qty] of Object.entries(tally)) {
+            inv = freeUsed(inv, code, qty);
+          }
+          return { inventory: inv, workingLayout: blankLayout() };
+        }),
       layoutLoadFromGenerator: (placements, attachments, board, name, generated_by) =>
-        set((s) => ({
-          workingLayout: {
-            ...s.workingLayout,
-            placements,
-            attachments,
-            board_mm: board,
-            name,
-          },
-        })),
+        set((s) => {
+          // 1. Free whatever the current layout was consuming.
+          let inv = s.inventory;
+          const prev: Record<string, number> = {};
+          for (const p of s.workingLayout.placements) {
+            prev[p.code] = (prev[p.code] ?? 0) + 1;
+          }
+          for (const [code, qty] of Object.entries(prev)) {
+            inv = freeUsed(inv, code, qty);
+          }
+          // 2. Mark the new layout's pieces as used so the inventory
+          //    "available" counter matches what the canvas now shows.
+          const next: Record<string, number> = {};
+          for (const p of placements) {
+            next[p.code] = (next[p.code] ?? 0) + 1;
+          }
+          for (const [code, qty] of Object.entries(next)) {
+            inv = markUsed(inv, code, qty);
+          }
+          return {
+            inventory: inv,
+            workingLayout: {
+              ...s.workingLayout,
+              placements,
+              attachments,
+              board_mm: board,
+              name,
+              ...(generated_by ? { generated_by } : {}),
+            },
+          };
+        }),
 
       saveCurrent: () => {
         const wl = get().workingLayout;
@@ -133,6 +173,7 @@ export const useApp = create<AppState>()(
           board_mm: wl.board_mm,
           placements: wl.placements,
           attachments: wl.attachments,
+          ...(wl.generated_by ? { generated_by: wl.generated_by } : {}),
           created_at: now,
           updated_at: now,
         };
@@ -142,14 +183,35 @@ export const useApp = create<AppState>()(
       loadSaved: (id) => {
         const layout = get().savedLayouts.find((l) => l.id === id);
         if (!layout) return;
-        set({
-          workingLayout: {
-            name: layout.name,
-            placements: layout.placements,
-            attachments: layout.attachments,
-            board_mm: layout.board_mm,
-            scale: layout.scale,
-          },
+        set((s) => {
+          // Same free-old/mark-new pattern as layoutLoadFromGenerator,
+          // so loading a saved layout keeps inventory in sync.
+          let inv = s.inventory;
+          const prev: Record<string, number> = {};
+          for (const p of s.workingLayout.placements) {
+            prev[p.code] = (prev[p.code] ?? 0) + 1;
+          }
+          for (const [code, qty] of Object.entries(prev)) {
+            inv = freeUsed(inv, code, qty);
+          }
+          const next: Record<string, number> = {};
+          for (const p of layout.placements) {
+            next[p.code] = (next[p.code] ?? 0) + 1;
+          }
+          for (const [code, qty] of Object.entries(next)) {
+            inv = markUsed(inv, code, qty);
+          }
+          return {
+            inventory: inv,
+            workingLayout: {
+              name: layout.name,
+              placements: layout.placements,
+              attachments: layout.attachments,
+              board_mm: layout.board_mm,
+              scale: layout.scale,
+              ...(layout.generated_by ? { generated_by: layout.generated_by } : {}),
+            },
+          };
         });
       },
       deleteSaved: (id) =>
