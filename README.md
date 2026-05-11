@@ -102,8 +102,33 @@ endpoints; the frontend works without it (localStorage fallback).
 npm test
 ```
 
-Vitest covers the geometry engine, layout generator, inventory and catalog
-packages.
+Vitest covers the geometry engine, layout generator, inventory, catalog,
+storage, ai-providers, and frontend packages — 53 unit tests in total.
+
+## Browser tests (E2E)
+
+The unit tests prove the math; the E2E suite proves the user-visible
+flow actually works in a real browser. Headless Chromium runs the editor
+end-to-end: load the M1 starter set, verify the oval renders on the
+canvas, inventory updates, save → /layouts → Export SVG triggers a
+download.
+
+```bash
+# One-time setup — downloads the Chromium binary (~150–200 MB).
+npx playwright install chromium
+
+# Run the smoke
+npm run e2e --workspace frontend
+```
+
+**macOS note**: do *not* pass `--with-deps` to `playwright install`. That
+flag is Linux-only and triggers a `sudo` prompt on macOS. The plain
+`npx playwright install chromium` is enough.
+
+**CI note**: cache `~/.cache/ms-playwright` keyed on `package-lock.json`
+to skip the Chromium download on subsequent runs. Under `CI=true`, the
+Playwright config starts a clean Vite server (`reuseExistingServer:
+false`) so a flaky test cannot mask a build error in a previous run.
 
 ---
 

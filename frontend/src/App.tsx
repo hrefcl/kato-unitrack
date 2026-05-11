@@ -21,6 +21,7 @@ export function App() {
             <NavLink
               key={t.to}
               to={t.to}
+              data-testid={`nav-${t.to.slice(1)}`}
               className={({ isActive }) =>
                 `px-3 py-1.5 text-sm border-b-2 ${
                   isActive ? "tab-active" : "border-transparent text-zinc-400 hover:text-zinc-200"

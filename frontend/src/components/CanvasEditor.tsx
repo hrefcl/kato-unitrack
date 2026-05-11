@@ -207,6 +207,7 @@ export function CanvasEditor() {
       <div className="flex-1 relative bg-zinc-900">
         <svg
           ref={svgRef}
+          data-testid="canvas-editor"
           className="absolute inset-0 w-full h-full cursor-crosshair"
           onMouseMove={handleMouseMove}
           onMouseDown={handleMouseDown}
@@ -304,6 +305,9 @@ function PieceSVG({
       opacity={ghost ? 0.55 : 1}
       onClick={onClick}
       style={{ cursor: onClick ? "pointer" : "default" }}
+      data-placement-id={ghost ? undefined : placement.id}
+      data-code={placement.code}
+      data-ghost={ghost ? "true" : undefined}
       dangerouslySetInnerHTML={{ __html: body }}
     />
   );
