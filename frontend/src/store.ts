@@ -328,31 +328,25 @@ export const useApp = create<AppState>()(
     {
       name: "kato-unitrack",
       storage: createJSONStorage(() => localStorage),
-      // Bumped on every change to the seed shape or the seed contents.
-      // Persisted state migrates forward; existing user data is
-      // preserved unless explicitly stale.
-      version: 2,
+      // The PM explicitly wants the seed as THE base inventory. Earlier
+      // attempts (v2) tried to be polite and only seeded when the
+      // existing inventory looked empty, but users who'd played with
+      // the M1 starter ended up stuck in a hybrid state that hid the
+      // real default. v3 is intentionally aggressive: every old store
+      // (< 3) is restored to the seed at boot. Saved layouts are
+      // preserved; only `inventory` and a blank board are reset.
+      version: 3,
       migrate: (persistedState, oldVersion) => {
-        const s = persistedState as Partial<AppState> & { workingLayout?: AppState["workingLayout"] };
-        // v0 / v1 → v2: introduce the seed inventory. Only replace the
-        // inventory if the user had it empty (i.e. they never customised
-        // it). A user with their own pieces shouldn't lose them.
-        if (oldVersion < 2) {
-          const oldInv = s.inventory;
-          const totalOwned = oldInv
-            ? Object.values(oldInv.entries).reduce((n, e) => n + (e?.owned ?? 0), 0)
-            : 0;
-          if (totalOwned === 0) {
-            s.inventory = buildSeededInventory();
-          }
-          // Also nudge the default board upward for blank layouts.
-          if (
-            s.workingLayout &&
-            s.workingLayout.placements.length === 0 &&
-            s.workingLayout.board_mm.width <= 1500 &&
-            s.workingLayout.board_mm.height <= 800
-          ) {
-            s.workingLayout = { ...s.workingLayout, board_mm: { ...DEFAULT_BOARD_MM } };
+        const s = persistedState as Partial<AppState> & {
+          workingLayout?: AppState["workingLayout"];
+        };
+        if (oldVersion < 3) {
+          s.inventory = buildSeededInventory();
+          if (s.workingLayout && s.workingLayout.placements.length === 0) {
+            s.workingLayout = {
+              ...s.workingLayout,
+              board_mm: { ...DEFAULT_BOARD_MM },
+            };
           }
         }
         return s as AppState;
