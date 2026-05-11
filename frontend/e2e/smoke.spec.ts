@@ -59,6 +59,31 @@ test.describe("KATO UNITRACK editor smoke", () => {
     expect(count).toBeLessThanOrEqual(60);
   });
 
+  test("edit toolbar shows when a placement is selected and rotates the piece", async ({ page }) => {
+    // Build a layout first so there are placements to click.
+    await page.locator('[data-testid="nav-generator"]').click();
+    await page
+      .getByRole("button", { name: /^(Generar maquetas|Generate layouts)$/i })
+      .click();
+    await page
+      .getByRole("button", { name: /^(Abrir en el editor|Open in editor)$/i })
+      .first()
+      .click();
+    await expect(page.locator("[data-placement-id]").first()).toBeVisible();
+
+    // Click a placement to select it. The toolbar should appear.
+    await page.locator("[data-placement-id]").first().click({ force: true });
+    await expect(page.locator('[data-testid="edit-toolbar"]')).toBeVisible();
+
+    // Read current rotation from the placement transform attr, click
+    // +15°, and verify the rotation went up by 15.
+    const before = await page.locator("[data-placement-id]").first().getAttribute("transform");
+    await page.locator('[data-testid="edit-rotate-plus"]').click();
+    const after = await page.locator("[data-placement-id]").first().getAttribute("transform");
+    expect(before).not.toBe(after);
+    expect(after ?? "").toMatch(/rotate\(/);
+  });
+
   test("save → /layouts shows the row → Export SVG triggers a download", async ({ page }) => {
     // Build a layout via the generator first.
     await page.locator('[data-testid="nav-generator"]').click();

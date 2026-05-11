@@ -169,17 +169,45 @@ export function CanvasEditor() {
       });
       return;
     }
+    if (moveRef.current) {
+      // Translate the screen-delta into world mm using the current zoom.
+      // Note the Y axis flips between screen (Y-down) and world (Y-up).
+      const dxScreen = e.clientX - moveRef.current.startX;
+      const dyScreen = e.clientY - moveRef.current.startY;
+      const dx = dxScreen / view.zoom;
+      const dy = -dyScreen / view.zoom;
+      updatePlacement(moveRef.current.placementId, {
+        position_mm: [
+          moveRef.current.origPos[0] + dx,
+          moveRef.current.origPos[1] + dy,
+        ],
+      });
+      return;
+    }
     const [x, y] = screenToWorld(e.clientX, e.clientY);
     setCursor({ x, y });
   };
 
+  // Move-by-drag of a selected placement. Set when the user mouse-downs
+  // on a placement that is already selected — see PieceSVG onMouseDown
+  // below. While active, handleMouseMove updates the placement's
+  // position_mm instead of panning the canvas.
+  const moveRef = useRef<{
+    placementId: string;
+    startX: number;
+    startY: number;
+    origPos: [number, number];
+  } | null>(null);
+
   const handleMouseDown = (e: React.MouseEvent) => {
+    // Middle-click, Alt+click, or no-active-pick → start a pan.
     if (e.button === 1 || (e.button === 0 && e.altKey) || !pickedCode) {
       dragRef.current = { startX: e.clientX, startY: e.clientY, pan0: view };
     }
   };
   const handleMouseUp = () => {
     dragRef.current = null;
+    moveRef.current = null;
   };
 
   const handleClick = (e: React.MouseEvent) => {
@@ -269,6 +297,26 @@ export function CanvasEditor() {
                   e.stopPropagation();
                   if (!pickedCode) setSelected(p.id);
                 }}
+                onMouseDown={(e) => {
+                  // Mouse-down on an already-selected placement starts a
+                  // drag-to-move. The first click on a non-selected
+                  // placement only selects it; the user then drags it on
+                  // the next click. This matches the standard "select →
+                  // drag" pattern used by Figma / Photoshop.
+                  if (pickedCode) return;
+                  if (e.altKey) return;
+                  if (p.id !== selected) {
+                    setSelected(p.id);
+                    return;
+                  }
+                  e.stopPropagation();
+                  moveRef.current = {
+                    placementId: p.id,
+                    startX: e.clientX,
+                    startY: e.clientY,
+                    origPos: [p.position_mm[0], p.position_mm[1]],
+                  };
+                }}
               />
             ))}
             {ghost && pickedPiece && <PieceSVG placement={ghost} pieces={pieces} catalog={catalog} ghost />}
@@ -307,6 +355,119 @@ export function CanvasEditor() {
             <kbd className="text-amber-400 mx-1">{t("canvas.kbd.esc")}</kbd>
           </div>
         </div>
+
+        {selected && (() => {
+          const sel = layout.placements.find((p) => p.id === selected);
+          if (!sel) return null;
+          const piece = catalog.byCode.get(sel.code);
+          return (
+            <SelectedToolbar
+              placement={sel}
+              pieceName={piece?.name ?? sel.code}
+              onRotate={(delta) =>
+                updatePlacement(sel.id, { rotation_deg: sel.rotation_deg + delta })
+              }
+              onMirror={() => updatePlacement(sel.id, { mirrored: !sel.mirrored })}
+              onDuplicate={() => {
+                const id = duplicatePlacement(sel.id);
+                if (id) setSelected(id);
+              }}
+              onDelete={() => {
+                invFreeUsed(sel.code, 1);
+                removePlacement(sel.id);
+                setSelected(null);
+              }}
+              onDeselect={() => setSelected(null)}
+            />
+          );
+        })()}
+      </div>
+    </div>
+  );
+}
+
+function SelectedToolbar(props: {
+  placement: Placement;
+  pieceName: string;
+  onRotate: (delta: number) => void;
+  onMirror: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+  onDeselect: () => void;
+}) {
+  const { placement: p, pieceName } = props;
+  const px = Math.round(p.position_mm[0]);
+  const py = Math.round(p.position_mm[1]);
+  const rot = Math.round(p.rotation_deg);
+  return (
+    <div
+      data-testid="edit-toolbar"
+      className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-zinc-950/95 border border-amber-600/50 rounded-lg shadow-2xl px-4 py-2 flex items-center gap-4 text-xs"
+    >
+      <div className="flex flex-col">
+        <div className="text-amber-400 font-mono text-[11px]">{p.code}</div>
+        <div className="text-zinc-300 text-[10px] truncate max-w-[16rem]">{pieceName}</div>
+      </div>
+      <div className="border-l border-zinc-800 pl-3 flex flex-col text-[10px] text-zinc-400">
+        <div>
+          {t("edit.toolbar.position")}: <span className="text-zinc-200">{px}, {py}</span> mm
+        </div>
+        <div>
+          {t("edit.toolbar.rotation")}: <span className="text-zinc-200">{rot}°</span>
+          {p.mirrored && <span className="text-amber-400 ml-1">(M)</span>}
+        </div>
+      </div>
+      <div className="border-l border-zinc-800 pl-3 flex items-center gap-1">
+        <button
+          className="btn text-[11px] px-2 py-1"
+          onClick={() => props.onRotate(-15)}
+          title={t("edit.toolbar.rotateMinus")}
+          data-testid="edit-rotate-minus"
+        >
+          ↺ 15°
+        </button>
+        <button
+          className="btn text-[11px] px-2 py-1"
+          onClick={() => props.onRotate(15)}
+          title={t("edit.toolbar.rotatePlus")}
+          data-testid="edit-rotate-plus"
+        >
+          15° ↻
+        </button>
+        <button
+          className="btn text-[11px] px-2 py-1"
+          onClick={() => props.onRotate(90)}
+          title={t("edit.toolbar.rotate90")}
+        >
+          90°
+        </button>
+        <button
+          className="btn text-[11px] px-2 py-1"
+          onClick={props.onMirror}
+          data-testid="edit-mirror"
+        >
+          {t("edit.toolbar.mirror")}
+        </button>
+        <button
+          className="btn text-[11px] px-2 py-1"
+          onClick={props.onDuplicate}
+          data-testid="edit-duplicate"
+        >
+          {t("edit.toolbar.duplicate")}
+        </button>
+        <button
+          className="btn text-[11px] px-2 py-1 text-rose-300"
+          onClick={props.onDelete}
+          data-testid="edit-delete"
+        >
+          {t("edit.toolbar.delete")}
+        </button>
+        <button
+          className="btn text-[11px] px-2 py-1 text-zinc-400"
+          onClick={props.onDeselect}
+        >
+          ×
+        </button>
       </div>
     </div>
   );
@@ -334,6 +495,7 @@ function PieceSVG({
   ghost,
   selected,
   onClick,
+  onMouseDown,
 }: {
   placement: Placement;
   pieces: ReturnType<typeof catalog.geometryMap>;
@@ -341,6 +503,7 @@ function PieceSVG({
   ghost?: boolean;
   selected?: boolean;
   onClick?: (e: React.MouseEvent) => void;
+  onMouseDown?: (e: React.MouseEvent) => void;
 }) {
   const piece = catalog.byCode.get(placement.code);
   const geom = pieces.get(placement.code);
@@ -356,10 +519,12 @@ function PieceSVG({
       transform={`translate(${placement.position_mm[0]} ${placement.position_mm[1]}) rotate(${placement.rotation_deg}) ${placement.mirrored ? "scale(1, -1)" : ""}`}
       opacity={ghost ? 0.55 : 1}
       onClick={onClick}
-      style={{ cursor: onClick ? "pointer" : "default" }}
+      onMouseDown={onMouseDown}
+      style={{ cursor: onClick ? (selected ? "move" : "pointer") : "default" }}
       data-placement-id={ghost ? undefined : placement.id}
       data-code={placement.code}
       data-ghost={ghost ? "true" : undefined}
+      data-selected={selected ? "true" : undefined}
       dangerouslySetInnerHTML={{ __html: body }}
     />
   );
