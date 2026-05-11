@@ -12,17 +12,24 @@
 import { deg2rad } from "./vec.js";
 import type { PieceGeometry, Vec2 } from "./types.js";
 
-// Schematic KATO-style track: a roadbed band (BALLAST) sits under the
-// track, ties cross perpendicular to the rails and poke past them, and
-// two amber rails ride on top. Stroke widths are chosen so the result
-// reads cleanly at typical editor zoom (0.4–1.2× on a 2 m board) and
-// doesn't drown the rails in tie noise.
-const TIE_HALF_HEIGHT = 8;     // tie poke past the rail (mm)
+// Schematic KATO-style track. At the zooms a 2 m board uses
+// (0.3×–1×), per-tie hash marks form a noisy "halo" around each
+// curve and create spikes at every connector, so we now render
+// only:
+//   - a continuous ballast/roadbed band (BALLAST)
+//   - two amber rails on top
+// The ties (sleepers) are intentionally NOT drawn. The result is a
+// clean CAD-style schematic; the geometry is exact, the appearance
+// is calm. When somebody wants the photographic look, the right move
+// is to bring in real PDF crops (see scripts/extract-pdf-assets.mjs).
 const RAIL_OFFSET = 4.5;       // distance from centerline to each rail
-const RAIL_STROKE = 1.6;       // amber rail — strong, the eye-catcher
-const TIE_STROKE = 0.6;        // tie hash — calmer than v1
-const BALLAST_HALF_HEIGHT = 10; // roadbed band slightly wider than ties
-const BALLAST_FILL = "#161616"; // very dark grey, sits on the canvas
+const RAIL_STROKE = 2.2;       // amber rail — strong, the eye-catcher
+const BALLAST_HALF_HEIGHT = 7;  // roadbed slightly wider than the rails
+const BALLAST_FILL = "#2a2a2e"; // grey roadbed, sits on the dark canvas
+// Kept for backward compat with renderTurnout's call-site geometry —
+// any future component that wants to draw ties can read these.
+const TIE_HALF_HEIGHT = 0;
+const TIE_STROKE = 0;
 
 export interface SvgOptions {
   /** Stroke colours; default black ties + dark grey rails. */
@@ -64,22 +71,12 @@ function renderStraight(piece: ExtendedGeom, opts: SvgOptions): string {
   const a = piece.connections[0]!;
   const b = piece.connections[1]!;
   const x0 = a.position_mm[0], x1 = b.position_mm[0];
-  const tieColor = opts.tieColor ?? "#222";
   const railColor = opts.railColor ?? "#444";
-  // Ballast / roadbed beneath the ties — a single dark rectangle so the
-  // schematic track reads as a continuous strip rather than a sparse
-  // set of hash marks on the canvas background.
   const ballast = `<rect x="${x0}" y="${-BALLAST_HALF_HEIGHT}" width="${x1 - x0}" height="${BALLAST_HALF_HEIGHT * 2}" fill="${BALLAST_FILL}" stroke="none"/>`;
-  const ties: string[] = [];
-  const tieStep = 6;
-  for (let x = x0 + 3; x < x1 - 2; x += tieStep) {
-    ties.push(`<line x1="${x}" y1="${-TIE_HALF_HEIGHT}" x2="${x}" y2="${TIE_HALF_HEIGHT}" stroke="${tieColor}" stroke-width="${TIE_STROKE}" stroke-linecap="round"/>`);
-  }
-  const rails = [
-    `<line x1="${x0}" y1="${-RAIL_OFFSET}" x2="${x1}" y2="${-RAIL_OFFSET}" stroke="${railColor}" stroke-width="${RAIL_STROKE}" stroke-linecap="round"/>`,
-    `<line x1="${x0}" y1="${RAIL_OFFSET}" x2="${x1}" y2="${RAIL_OFFSET}" stroke="${railColor}" stroke-width="${RAIL_STROKE}" stroke-linecap="round"/>`,
-  ];
-  return ballast + ties.join("") + rails.join("");
+  const rails =
+    `<line x1="${x0}" y1="${-RAIL_OFFSET}" x2="${x1}" y2="${-RAIL_OFFSET}" stroke="${railColor}" stroke-width="${RAIL_STROKE}" stroke-linecap="round"/>` +
+    `<line x1="${x0}" y1="${RAIL_OFFSET}" x2="${x1}" y2="${RAIL_OFFSET}" stroke="${railColor}" stroke-width="${RAIL_STROKE}" stroke-linecap="round"/>`;
+  return ballast + rails;
 }
 
 function arcPath(R: number, sweepDeg: number, offset: number): string {
@@ -101,31 +98,10 @@ function renderCurve(piece: ExtendedGeom, opts: SvgOptions): string {
   const R = piece.arc.radius_mm;
   const sweep = piece.arc.sweep_deg;
   const railColor = opts.railColor ?? "#444";
-  const tieColor = opts.tieColor ?? "#222";
-  // Ballast: a filled annulus segment (outer radius - inner radius) under
-  // the rails, so the curve reads as a continuous roadbed band.
   const ballast = annulusSegmentPath(R, sweep, BALLAST_HALF_HEIGHT, BALLAST_FILL);
   const inner = `<path d="${arcPath(R, sweep, +RAIL_OFFSET)}" fill="none" stroke="${railColor}" stroke-width="${RAIL_STROKE}" stroke-linecap="round"/>`;
   const outer = `<path d="${arcPath(R, sweep, -RAIL_OFFSET)}" fill="none" stroke="${railColor}" stroke-width="${RAIL_STROKE}" stroke-linecap="round"/>`;
-  // Ties: short radial segments every ~6 mm of arc length.
-  const ties: string[] = [];
-  const arcLen = (R * sweep * Math.PI) / 180;
-  const tieCount = Math.max(2, Math.floor(arcLen / 6));
-  for (let i = 1; i < tieCount; i++) {
-    const t = i / tieCount;
-    const ang = deg2rad(sweep * t);
-    const cx = R * Math.sin(ang);
-    const cy = R - R * Math.cos(ang);
-    // Radial normal (sin, -cos); ties span ±TIE_HALF_HEIGHT along it.
-    const nx = Math.sin(ang);
-    const ny = -Math.cos(ang);
-    const x1 = cx + nx * TIE_HALF_HEIGHT;
-    const y1 = cy + ny * TIE_HALF_HEIGHT;
-    const x2 = cx - nx * TIE_HALF_HEIGHT;
-    const y2 = cy - ny * TIE_HALF_HEIGHT;
-    ties.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${tieColor}" stroke-width="${TIE_STROKE}" stroke-linecap="round"/>`);
-  }
-  return ballast + ties.join("") + inner + outer;
+  return ballast + inner + outer;
 }
 
 /**

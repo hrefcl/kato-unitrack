@@ -87,7 +87,7 @@ export class LocalDemoProvider implements AIProvider {
   }
 }
 
-export const PROVIDERS: ReadonlyMap<string, AIProvider> = new Map([
+export const PROVIDERS: ReadonlyMap<string, AIProvider> = new Map<string, AIProvider>([
   ["local-demo", new LocalDemoProvider()],
   ["openai", new OpenAIProvider()],
   ["claude", new ClaudeProvider()],
