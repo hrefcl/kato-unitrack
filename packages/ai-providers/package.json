@@ -13,7 +13,9 @@
   },
   "dependencies": {
     "@kato-unitrack/catalog": "*",
-    "@kato-unitrack/geometry-engine": "*"
+    "@kato-unitrack/geometry-engine": "*",
+    "@kato-unitrack/inventory": "*",
+    "@kato-unitrack/layout-generator": "*"
   },
   "devDependencies": {
     "typescript": "5.5.4",

@@ -33,6 +33,18 @@ export type ProposalMove =
       readonly toConn: string;
       readonly conn: string;
       readonly mirrored?: boolean;
+    }
+  | {
+      /**
+       * Adds an Attachment between two refs already created by earlier
+       * `place` / `attach` moves. Used to close a loop (last → first)
+       * without re-placing the existing pieces.
+       */
+      readonly kind: "link";
+      readonly from: string;
+      readonly fromConn: string;
+      readonly to: string;
+      readonly toConn: string;
     };
 
 export interface LayoutProposal {

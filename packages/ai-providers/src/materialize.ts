@@ -42,9 +42,13 @@ export function materializeProposal(
   const refGeom: Record<string, PieceGeometry> = {};
 
   for (const [i, move] of proposal.moves.entries()) {
-    const piece = catalog.byCode.get(move.code);
-    if (!piece) return { ok: false, reason: `move ${i}: unknown code ${move.code}` };
-    const geom = catalog.asGeometry(move.code);
+    // `link` moves don't introduce a new piece; they just bind two
+    // existing refs. Validate the piece code only for place/attach.
+    if (move.kind !== "link") {
+      const piece = catalog.byCode.get(move.code);
+      if (!piece) return { ok: false, reason: `move ${i}: unknown code ${move.code}` };
+    }
+    const geom = move.kind !== "link" ? catalog.asGeometry(move.code) : null;
 
     if (move.kind === "place") {
       const id = `mat-${i}`;
@@ -56,38 +60,51 @@ export function materializeProposal(
         mirrored: false,
       });
       refToId[move.ref] = id;
-      refGeom[move.ref] = geom;
+      refGeom[move.ref] = geom as PieceGeometry;
       continue;
     }
 
-    // attach
-    const toId = refToId[move.toRef];
-    const toGeom = refGeom[move.toRef];
-    if (!toId || !toGeom) {
-      return { ok: false, reason: `move ${i}: unknown toRef ${move.toRef}` };
-    }
-    const toPlacement = placements.find((p) => p.id === toId);
-    if (!toPlacement) return { ok: false, reason: `move ${i}: missing placement ${toId}` };
-    const toConn = toGeom.connections.find((c) => c.id === move.toConn);
-    if (!toConn) return { ok: false, reason: `move ${i}: ${move.toRef} has no connection ${move.toConn}` };
+    if (move.kind === "attach") {
+      const toId = refToId[move.toRef];
+      const toGeom = refGeom[move.toRef];
+      if (!toId || !toGeom) {
+        return { ok: false, reason: `move ${i}: unknown toRef ${move.toRef}` };
+      }
+      const toPlacement = placements.find((p) => p.id === toId);
+      if (!toPlacement) return { ok: false, reason: `move ${i}: missing placement ${toId}` };
+      const toConn = toGeom.connections.find((c) => c.id === move.toConn);
+      if (!toConn) return { ok: false, reason: `move ${i}: ${move.toRef} has no connection ${move.toConn}` };
 
-    const target = connectionWorld(toGeom, toConn, toPlacement);
-    let next: Placement;
-    try {
-      next = placementForAttach(geom, move.conn, target, {
-        mirrored: move.mirrored ?? false,
-        placementId: `mat-${i}`,
+      const target = connectionWorld(toGeom, toConn, toPlacement);
+      let next: Placement;
+      try {
+        next = placementForAttach(geom as never, move.conn, target, {
+          mirrored: move.mirrored ?? false,
+          placementId: `mat-${i}`,
+        });
+      } catch (err) {
+        return { ok: false, reason: `move ${i}: ${(err as Error).message}` };
+      }
+      placements.push(next);
+      attachments.push({
+        a: { placementId: toId, connectionId: move.toConn },
+        b: { placementId: next.id, connectionId: move.conn },
       });
-    } catch (err) {
-      return { ok: false, reason: `move ${i}: ${(err as Error).message}` };
+      refToId[move.ref] = next.id;
+      refGeom[move.ref] = geom as PieceGeometry;
+      continue;
     }
-    placements.push(next);
+
+    // kind === "link" — pure attachment between two already-emitted refs.
+    const fromId = refToId[move.from];
+    const toId = refToId[move.to];
+    if (!fromId || !toId) {
+      return { ok: false, reason: `move ${i}: link references unknown ref(s) ${move.from} / ${move.to}` };
+    }
     attachments.push({
-      a: { placementId: toId, connectionId: move.toConn },
-      b: { placementId: next.id, connectionId: move.conn },
+      a: { placementId: fromId, connectionId: move.fromConn },
+      b: { placementId: toId, connectionId: move.toConn },
     });
-    refToId[move.ref] = next.id;
-    refGeom[move.ref] = geom;
   }
 
   return { ok: true, layout: { placements, attachments }, refToId };

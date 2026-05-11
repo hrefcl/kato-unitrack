@@ -4,6 +4,7 @@ import { useApp } from "../store";
 import { catalog } from "../catalog";
 import { generateLayouts } from "@kato-unitrack/layout-generator";
 import {
+  LocalDemoProvider,
   PROVIDERS,
   materializeProposal,
   type AIProvider,
@@ -55,6 +56,14 @@ export function GeneratorPage() {
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiProposals, setAiProposals] = useState<LayoutProposal[]>([]);
+
+  // Wire the runtime catalog into the LocalDemoProvider once. Without
+  // this, the provider can't drive the layout-generator and the panel
+  // throws "catalog not configured".
+  useEffect(() => {
+    const local = PROVIDERS.get("local-demo");
+    if (local instanceof LocalDemoProvider) local.setCatalog(catalog);
+  }, []);
 
   // Pull the saved key for the active provider when the dropdown changes.
   useEffect(() => {
