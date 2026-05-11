@@ -88,9 +88,14 @@ function arcPath(R: number, sweepDeg: number, offset: number): string {
   const ex = r * Math.sin(a);
   const ey = R - r * Math.cos(a);
   const largeArc = sweepDeg > 180 ? 1 : 0;
-  // Sweep flag: 1 = CCW in standard SVG, but we already flipped Y in the
-  // outer <g>, so the on-screen sweep direction is 0.
-  return `M ${0},${offset} A ${r} ${r} 0 ${largeArc} 0 ${ex} ${ey}`;
+  // SVG sweep_flag = 1 picks the arc that traverses in the "positive
+  // angle" direction (CW in SVG's native Y-down frame). After the
+  // canvas's `scale(zoom, -zoom)` or renderPieceSvg's `scale(1,-1)`
+  // flip, that arc appears CCW on screen — which is the convex side
+  // facing AWAY from the curve's centre (0, R). With sweep_flag=0
+  // the renderer picks the concave side, producing a star instead
+  // of a circle when 8 curves are chained.
+  return `M ${0},${offset} A ${r} ${r} 0 ${largeArc} 1 ${ex} ${ey}`;
 }
 
 function renderCurve(piece: ExtendedGeom, opts: SvgOptions): string {
@@ -124,11 +129,15 @@ function annulusSegmentPath(R: number, sweepDeg: number, half: number, fill: str
   const largeArc = sweepDeg > 180 ? 1 : 0;
   // Path: start at inner-start, sweep inner arc to inner-end, line to
   // outer-end, sweep outer arc back to outer-start, line close.
+  // The two sweep-flags are flipped (1, 0) to match the convention now
+  // used in arcPath above — see its comment for why. Tracing the inner
+  // arc forward with flag=1 and the outer arc back with flag=0 makes the
+  // annulus close cleanly around the curve's convex side.
   const d =
     `M ${iSx} ${iSy} ` +
-    `A ${inner} ${inner} 0 ${largeArc} 0 ${iEx} ${iEy} ` +
+    `A ${inner} ${inner} 0 ${largeArc} 1 ${iEx} ${iEy} ` +
     `L ${oEx} ${oEy} ` +
-    `A ${outer} ${outer} 0 ${largeArc} 1 ${oSx} ${oSy} Z`;
+    `A ${outer} ${outer} 0 ${largeArc} 0 ${oSx} ${oSy} Z`;
   return `<path d="${d}" fill="${fill}" stroke="none"/>`;
 }
 
@@ -157,7 +166,10 @@ function renderTurnout(piece: ExtendedGeom, opts: SvgOptions): string {
   const outerR = t.radius_mm + RAIL_OFFSET;
   const innerEnd: [number, number] = [innerR * Math.sin(a), sign * (t.radius_mm - innerR * Math.cos(a))];
   const outerEnd: [number, number] = [outerR * Math.sin(a), sign * (t.radius_mm - outerR * Math.cos(a))];
-  const sweepFlag = sign === 1 ? 0 : 1; // SVG Y is flipped in <g> wrapper
+  // Sweep flag follows the same convention as arcPath now: 1 for a
+  // left-handed (CCW-on-screen) curve, 0 for a right-handed (CW) one.
+  // sign=+1 (left turnout) → CCW → sweep_flag=1.
+  const sweepFlag = sign === 1 ? 1 : 0;
   const innerPath = `<path d="M 0 ${sign * RAIL_OFFSET} A ${innerR} ${innerR} 0 0 ${sweepFlag} ${innerEnd[0]} ${innerEnd[1]}" fill="none" stroke="${railColor}" stroke-width="${RAIL_STROKE}"/>`;
   const outerPath = `<path d="M 0 ${-sign * RAIL_OFFSET} A ${outerR} ${outerR} 0 0 ${sweepFlag} ${outerEnd[0]} ${outerEnd[1]}" fill="none" stroke="${railColor}" stroke-width="${RAIL_STROKE}"/>`;
   // Mark the diverging end point with a small circle so the user can see "C".
