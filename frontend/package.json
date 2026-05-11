@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@kato-unitrack/ai-providers": "*",
@@ -30,6 +31,7 @@
     "postcss": "8.4.41",
     "tailwindcss": "3.4.10",
     "typescript": "5.5.4",
-    "vite": "5.4.1"
+    "vite": "5.4.1",
+    "vitest": "1.6.0"
   }
 }

@@ -70,30 +70,13 @@ export class CatalogIndex {
 
   /** Project a PieceDefinition down to a PieceGeometry for the engine. */
   asGeometry(code: string): PieceGeometry {
-    const p = this.mustGet(code);
-    const out: PieceGeometry = {
-      code: p.code,
-      connections: p.connections,
-      snappable: p.snappable,
-    };
-    if (p.footprint_mm) (out as { footprint_mm?: typeof p.footprint_mm }).footprint_mm = p.footprint_mm;
-    if (p.arc) (out as { arc?: typeof p.arc }).arc = p.arc;
-    return out;
+    return toGeometry(this.mustGet(code));
   }
 
   /** Build the (code → geometry) map the engine wants. */
   geometryMap(): Map<string, PieceGeometry> {
     const m = new Map<string, PieceGeometry>();
-    for (const p of this.all) {
-      const g: PieceGeometry = {
-        code: p.code,
-        connections: p.connections,
-        snappable: p.snappable,
-      };
-      if (p.footprint_mm) (g as { footprint_mm?: typeof p.footprint_mm }).footprint_mm = p.footprint_mm;
-      if (p.arc) (g as { arc?: typeof p.arc }).arc = p.arc;
-      m.set(p.code, g);
-    }
+    for (const p of this.all) m.set(p.code, toGeometry(p));
     return m;
   }
 }
@@ -102,6 +85,23 @@ function pushTo<K, V>(m: Map<K, V[]>, key: K, value: V): void {
   const arr = m.get(key);
   if (arr) arr.push(value);
   else m.set(key, [value]);
+}
+
+// Pure mapping from catalog row to engine geometry. Preserves the
+// turnout/double_track descriptors so the renderer can draw those
+// pieces correctly — earlier versions dropped them, which silently
+// broke SVG export for any layout containing a KATO turnout.
+function toGeometry(p: PieceDefinition): PieceGeometry {
+  const g: Record<string, unknown> = {
+    code: p.code,
+    connections: p.connections,
+    snappable: p.snappable,
+  };
+  if (p.footprint_mm) g.footprint_mm = p.footprint_mm;
+  if (p.arc) g.arc = p.arc;
+  if (p.turnout) g.turnout = p.turnout;
+  if (p.double_track) g.double_track = p.double_track;
+  return g as unknown as PieceGeometry;
 }
 
 /** Parse a CatalogFile from a raw JSON string or value. */

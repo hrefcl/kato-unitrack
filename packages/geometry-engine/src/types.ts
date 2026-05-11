@@ -25,6 +25,18 @@ export interface PieceGeometry {
     readonly sweep_deg: number;
     readonly center_mm: Vec2;
   };
+  /** Turnout descriptor; present iff the piece is a KATO-style turnout. */
+  readonly turnout?: {
+    readonly radius_mm: number;
+    readonly diverge_deg: number;
+    readonly hand: "L" | "R" | "Wye";
+    readonly straight_length_mm: number;
+    readonly double_track?: boolean;
+    readonly wye?: boolean;
+    readonly compact?: boolean;
+  };
+  /** Double-track descriptor (parallel rail spacing in mm). */
+  readonly double_track?: { readonly spacing_mm: number };
   /** Marks pieces with no derivable geometry (accessories, sets, etc.). */
   readonly snappable?: boolean;
 }

@@ -186,29 +186,193 @@ function computeViewBox(piece: ExtendedGeom): { x: number; y: number; w: number;
 }
 
 /**
- * Render a piece to an SVG string. Returns null if the piece cannot be
- * drawn procedurally (no geometry / accessory).
+ * Render the inner SVG body of a piece (rails + ties, no `<svg>` wrapper).
+ * Returns null if the piece cannot be drawn procedurally.
+ *
+ * This is the single source of truth for piece markup. `renderPieceSvg`
+ * wraps this with an `<svg>` header/footer; `renderLayoutToSvgString`
+ * composes many bodies into one shared `<svg>` document.
+ */
+export function renderPieceBody(
+  piece: PieceGeometry & { arc?: ExtendedGeom["arc"]; turnout?: ExtendedGeom["turnout"]; double_track?: ExtendedGeom["double_track"] },
+  opts: SvgOptions = {},
+): string | null {
+  const p = piece as ExtendedGeom;
+  if (!p.connections || p.connections.length === 0) return null;
+  if (p.turnout) return renderTurnout(p, opts);
+  if (p.arc) return renderCurve(p, opts);
+  if (p.double_track && p.connections.length === 4) return renderDoubleStraight(p, opts);
+  if (p.connections.length === 2 && p.connections[0]!.position_mm[1] === 0) {
+    return renderStraight(p, opts);
+  }
+  return null;
+}
+
+/**
+ * Render a piece to a standalone SVG string. Returns null if the piece
+ * cannot be drawn procedurally (no geometry / accessory).
  */
 export function renderPieceSvg(
   piece: PieceGeometry & { arc?: ExtendedGeom["arc"]; turnout?: ExtendedGeom["turnout"]; double_track?: ExtendedGeom["double_track"]; type?: string },
   opts: SvgOptions = {},
 ): string | null {
-  const p = piece as ExtendedGeom & { type?: string };
-  if (!p.connections || p.connections.length === 0) return null;
+  const body = renderPieceBody(piece, opts);
+  if (body === null) return null;
+  const vb = opts.viewBoxMm ?? computeViewBox(piece as ExtendedGeom);
+  return svgHeader(vb, opts) + body + svgFooter();
+}
 
-  let body = "";
-  if (p.turnout) {
-    body = renderTurnout(p, opts);
-  } else if (p.arc) {
-    body = renderCurve(p, opts);
-  } else if (p.double_track && p.connections.length === 4) {
-    body = renderDoubleStraight(p, opts);
-  } else if (p.connections.length === 2 && p.connections[0]!.position_mm[1] === 0) {
-    body = renderStraight(p, opts);
-  } else {
-    return null;
+// ---------------------------------------------------------------------------
+// Whole-layout renderer
+// ---------------------------------------------------------------------------
+
+export interface LayoutSvgOptions extends SvgOptions {
+  /** Draw the rectangular board outline at (0,0,width,height). Default true. */
+  readonly showBoard?: boolean;
+  /** Draw a mm-aligned grid. Default false. */
+  readonly showGrid?: boolean;
+  /** Padding around the computed content bbox, in mm. Default 25. */
+  readonly contentPaddingMm?: number;
+  /** Optional bg colour applied as a `<rect>` behind everything. */
+  readonly backgroundColor?: string;
+}
+
+interface LayoutLike {
+  readonly placements: ReadonlyArray<{
+    readonly id: string;
+    readonly code: string;
+    readonly position_mm: Vec2 | readonly [number, number];
+    readonly rotation_deg: number;
+    readonly mirrored: boolean;
+  }>;
+  readonly board_mm?: { readonly width: number; readonly height: number };
+}
+
+/**
+ * Compose every Placement in a Layout into a single SVG document
+ * suitable for download or rasterization. No external resources are
+ * referenced; the output is fully self-contained inline SVG.
+ *
+ * SECURITY NOTE: this function ONLY emits inline primitives produced by
+ * renderPieceBody (lines, paths, circles). It does NOT embed <image>,
+ * external <link>, CSS url() references or untrusted strings, which
+ * keeps the resulting Canvas un-tainted and safe to toDataURL() later.
+ */
+export function renderLayoutToSvgString(
+  layout: LayoutLike,
+  geometryMap: ReadonlyMap<string, PieceGeometry>,
+  options: LayoutSvgOptions = {},
+): string {
+  const tieColor = options.tieColor ?? "#cbd5e1";
+  const railColor = options.railColor ?? "#fbbf24";
+  const showBoard = options.showBoard ?? true;
+  const showGrid = options.showGrid ?? false;
+  const pad = options.contentPaddingMm ?? 25;
+
+  // 1. Compute content bbox across all placements (in world mm).
+  let minX = +Infinity, minY = +Infinity, maxX = -Infinity, maxY = -Infinity;
+  const accum = (x: number, y: number) => {
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  };
+  for (const p of layout.placements) {
+    const geom = geometryMap.get(p.code);
+    if (!geom) continue;
+    const sy = p.mirrored ? -1 : 1;
+    const rad = (p.rotation_deg * Math.PI) / 180;
+    const cosR = Math.cos(rad), sinR = Math.sin(rad);
+    const sample = (lx: number, ly: number) => {
+      const wx = p.position_mm[0] + lx * cosR - sy * ly * sinR;
+      const wy = p.position_mm[1] + lx * sinR + sy * ly * cosR;
+      accum(wx, wy);
+    };
+    for (const c of geom.connections) sample(c.position_mm[0], c.position_mm[1]);
+    if (geom.footprint_mm) {
+      const w = geom.footprint_mm.width, h = geom.footprint_mm.height;
+      sample(0, -h / 2); sample(w, -h / 2); sample(0, h / 2); sample(w, h / 2);
+    }
+  }
+  if (showBoard && layout.board_mm) {
+    accum(0, 0);
+    accum(layout.board_mm.width, layout.board_mm.height);
+  }
+  if (!Number.isFinite(minX)) {
+    // Empty layout: tiny default viewBox so the SVG is still well-formed.
+    minX = 0; minY = 0; maxX = 100; maxY = 100;
+  }
+  // viewBox must compensate for the outer `scale(1,-1)`: every world
+  // point (x, y) renders at SVG (x, -y), so the SVG Y range covers
+  // [-maxY, -minY]. The viewBox Y origin (top-left of the visible box)
+  // is therefore -maxY - pad. Width unchanged.
+  const vbX = minX - pad;
+  const vbW = (maxX - minX) + 2 * pad;
+  const vbH = (maxY - minY) + 2 * pad;
+  const vbY = -maxY - pad;
+
+  const parts: string[] = [];
+  parts.push(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vbX} ${vbY} ${vbW} ${vbH}" preserveAspectRatio="xMidYMid meet">`,
+  );
+  if (options.backgroundColor) {
+    parts.push(`<rect x="${vbX}" y="${vbY}" width="${vbW}" height="${vbH}" fill="${escapeAttr(options.backgroundColor)}"/>`);
+  }
+  // Flip Y once for the whole document so all child coords use the
+  // engine's +Y-up convention.
+  parts.push(`<g transform="scale(1,-1)">`);
+
+  // Mirror the flip with translate(0, -2*midY) inside the group is not
+  // needed because viewBox is centered around the same Y range; the
+  // outer scale flips the Y axis and the child <g transforms compose
+  // accordingly.
+
+  if (showGrid) {
+    // The grid is inside the <g scale(1,-1)> group, so it lives in
+    // world space. Pass the world-coord bbox, not the SVG-coord viewBox.
+    parts.push(renderGrid(minX - pad, minY - pad, vbW, vbH));
+  }
+  if (showBoard && layout.board_mm) {
+    parts.push(
+      `<rect x="0" y="0" width="${layout.board_mm.width}" height="${layout.board_mm.height}" fill="none" stroke="#3f3f46" stroke-dasharray="8 8" stroke-width="1"/>`,
+    );
   }
 
-  const vb = opts.viewBoxMm ?? computeViewBox(p);
-  return svgHeader(vb, opts) + body + svgFooter();
+  for (const p of layout.placements) {
+    const geom = geometryMap.get(p.code);
+    if (!geom) continue;
+    const body = renderPieceBody(geom, { tieColor, railColor });
+    if (!body) continue;
+    const mirror = p.mirrored ? " scale(1, -1)" : "";
+    parts.push(
+      `<g transform="translate(${p.position_mm[0]} ${p.position_mm[1]}) rotate(${p.rotation_deg})${mirror}" data-placement-id="${escapeAttr(p.id)}" data-code="${escapeAttr(p.code)}">${body}</g>`,
+    );
+  }
+
+  parts.push(`</g></svg>`);
+  return parts.join("");
+}
+
+function renderGrid(x: number, y: number, w: number, h: number, step = 50): string {
+  const lines: string[] = [];
+  const minVX = Math.ceil(x / step) * step;
+  const maxVX = Math.floor((x + w) / step) * step;
+  const minHY = Math.ceil(y / step) * step;
+  const maxHY = Math.floor((y + h) / step) * step;
+  for (let vx = minVX; vx <= maxVX; vx += step) {
+    lines.push(`<line x1="${vx}" y1="${y}" x2="${vx}" y2="${y + h}" stroke="#27272a" stroke-width="0.3"/>`);
+  }
+  for (let hy = minHY; hy <= maxHY; hy += step) {
+    lines.push(`<line x1="${x}" y1="${hy}" x2="${x + w}" y2="${hy}" stroke="#27272a" stroke-width="0.3"/>`);
+  }
+  return `<g data-grid="1">${lines.join("")}</g>`;
+}
+
+function escapeAttr(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }

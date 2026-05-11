@@ -10,5 +10,5 @@
     "exactOptionalPropertyTypes": false,
     "noUncheckedIndexedAccess": false
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*", "test/**/*"]
 }

@@ -63,6 +63,8 @@ interface AppState {
   saveCurrent: () => string;
   loadSaved: (id: string) => void;
   deleteSaved: (id: string) => void;
+  /** Clone a saved layout (new id, name+" (copy)"). Inventory untouched. */
+  duplicateSaved: (id: string) => string | null;
 }
 
 const blankLayout = (): AppState["workingLayout"] => ({
@@ -216,6 +218,37 @@ export const useApp = create<AppState>()(
       },
       deleteSaved: (id) =>
         set((s) => ({ savedLayouts: s.savedLayouts.filter((l) => l.id !== id) })),
+      duplicateSaved: (id) => {
+        const src = get().savedLayouts.find((l) => l.id === id);
+        if (!src) return null;
+        // id = timestamp + 4-char random suffix to avoid same-ms collisions
+        // when the user spams Duplicate.
+        const newId = `L-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+        const now = new Date().toISOString();
+        const copy: SavedLayout = {
+          id: newId,
+          name: `${src.name} (copy)`,
+          scale: src.scale,
+          board_mm: { ...src.board_mm },
+          // Deep-clone placements/attachments so future edits to the
+          // copy don't mutate the original arrays.
+          placements: src.placements.map((p) => ({
+            ...p,
+            position_mm: [p.position_mm[0], p.position_mm[1]] as [number, number],
+          })),
+          attachments: src.attachments.map((a) => ({
+            a: { ...a.a },
+            b: { ...a.b },
+          })),
+          ...(src.generated_by ? { generated_by: src.generated_by } : {}),
+          created_at: now,
+          updated_at: now,
+        };
+        // Inventory is intentionally not touched: the saved layouts
+        // are snapshots; only the workingLayout reserves inventory.
+        set((s) => ({ savedLayouts: [...s.savedLayouts, copy] }));
+        return newId;
+      },
     }),
     {
       name: "kato-unitrack",

@@ -17,7 +17,7 @@ import {
   connectionWorld,
   findSnapCandidate,
   placementForAttach,
-  renderPieceSvg,
+  renderPieceBody,
   validate,
   type Layout,
   type Placement,
@@ -292,20 +292,12 @@ function PieceSVG({
   const piece = catalog.byCode.get(placement.code);
   const geom = pieces.get(placement.code);
   if (!piece || !geom) return null;
-  const inner = renderPieceSvg(piece as never, {
+  // Use the engine's body renderer directly — no regex extraction.
+  const body = renderPieceBody(geom, {
     tieColor: ghost ? "#fbbf24" : selected ? "#fde68a" : "#cbd5e1",
     railColor: ghost ? "#f59e0b" : selected ? "#fde68a" : "#fbbf24",
   });
-  if (!inner) return null;
-  // Parse out only the inner <g> children — the rendered SVG includes
-  // its own <svg viewBox>, but we want to compose it into a world group.
-  // For simplicity we embed the full SVG via <foreignObject>... actually
-  // an easier route: render the body directly via a separate function.
-  // For now, place a <g> that wraps the rendered body using a marker.
-  // The renderPieceSvg output has <svg .. ><g scale(1,-1)>...</g></svg>;
-  // we need to extract the contents of that inner <g>.
-  const m = inner.match(/<g transform="scale\(1,-1\)">([\s\S]*?)<\/g><\/svg>/);
-  const body = m ? m[1]! : "";
+  if (!body) return null;
   return (
     <g
       transform={`translate(${placement.position_mm[0]} ${placement.position_mm[1]}) rotate(${placement.rotation_deg}) ${placement.mirrored ? "scale(1, -1)" : ""}`}
