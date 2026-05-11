@@ -15,13 +15,14 @@ import type { PieceGeometry, Vec2 } from "./types.js";
 // Schematic KATO-style track: a roadbed band (BALLAST) sits under the
 // track, ties cross perpendicular to the rails and poke past them, and
 // two amber rails ride on top. Stroke widths are chosen so the result
-// is readable at typical editor zoom (0.5x–1.5x on a 1.5 m board).
-const TIE_HALF_HEIGHT = 9;     // tie poke past the rail (mm)
+// reads cleanly at typical editor zoom (0.4–1.2× on a 2 m board) and
+// doesn't drown the rails in tie noise.
+const TIE_HALF_HEIGHT = 8;     // tie poke past the rail (mm)
 const RAIL_OFFSET = 4.5;       // distance from centerline to each rail
-const RAIL_STROKE = 1.2;       // amber rail
-const TIE_STROKE = 1.0;        // tie hash (was 0.3 — almost invisible)
-const BALLAST_HALF_HEIGHT = 11.5; // roadbed band slightly wider than ties
-const BALLAST_FILL = "#1f1f23"; // dark grey, sits on the dark canvas
+const RAIL_STROKE = 1.6;       // amber rail — strong, the eye-catcher
+const TIE_STROKE = 0.6;        // tie hash — calmer than v1
+const BALLAST_HALF_HEIGHT = 10; // roadbed band slightly wider than ties
+const BALLAST_FILL = "#161616"; // very dark grey, sits on the canvas
 
 export interface SvgOptions {
   /** Stroke colours; default black ties + dark grey rails. */

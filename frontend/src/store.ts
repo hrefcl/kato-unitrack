@@ -7,6 +7,7 @@ import {
   markUsed,
   freeUsed,
   addSet,
+  available,
   type Inventory,
 } from "@kato-unitrack/inventory";
 import type {
@@ -82,13 +83,27 @@ interface AppState {
   deleteSaved: (id: string) => void;
   /** Clone a saved layout (new id, name+" (copy)"). Inventory untouched. */
   duplicateSaved: (id: string) => string | null;
+
+  /** Edit a single placement (move / rotate / mirror). Updates inventory if code changes. */
+  layoutUpdatePlacement: (id: string, patch: Partial<Placement>) => void;
+  /** Duplicate the currently selected placement with a small offset. */
+  layoutDuplicatePlacement: (id: string) => string | null;
+
+  /** Restore inventory from the seed (drops user changes to inventory only). */
+  restoreSeededInventory: () => void;
 }
+
+// 2 m × 1.2 m matches the real surface Francisco is building on at
+// home. Wide enough for an R718 outer / R481 inner double oval with
+// straight extensions; tall enough that a single R315 oval has air
+// around it for scenery edits.
+const DEFAULT_BOARD_MM = { width: 2000, height: 1200 };
 
 const blankLayout = (): AppState["workingLayout"] => ({
   name: "Untitled",
   placements: [],
   attachments: [],
-  board_mm: { width: 1500, height: 800 },
+  board_mm: { ...DEFAULT_BOARD_MM },
   scale: "N",
 });
 
@@ -266,10 +281,82 @@ export const useApp = create<AppState>()(
         set((s) => ({ savedLayouts: [...s.savedLayouts, copy] }));
         return newId;
       },
+
+      layoutUpdatePlacement: (id, patch) =>
+        set((s) => ({
+          workingLayout: {
+            ...s.workingLayout,
+            placements: s.workingLayout.placements.map((p) =>
+              p.id === id ? ({ ...p, ...patch } as Placement) : p,
+            ),
+          },
+        })),
+
+      layoutDuplicatePlacement: (id) => {
+        const src = get().workingLayout.placements.find((p) => p.id === id);
+        if (!src) return null;
+        const avail = available(get().inventory, src.code);
+        if (avail <= 0) return null;
+        const newId = `p-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
+        const dup: Placement = {
+          ...src,
+          id: newId,
+          // Offset slightly so the duplicate is visible on the canvas.
+          position_mm: [src.position_mm[0] + 30, src.position_mm[1] + 30],
+        };
+        set((s) => ({
+          workingLayout: {
+            ...s.workingLayout,
+            placements: [...s.workingLayout.placements, dup],
+          },
+          inventory: markUsed(s.inventory, src.code, 1),
+        }));
+        return newId;
+      },
+
+      restoreSeededInventory: () =>
+        set((s) => {
+          // Free anything currently consumed by the working layout first
+          // so the seed lands on a clean ledger.
+          let inv = buildSeededInventory();
+          for (const p of s.workingLayout.placements) {
+            inv = markUsed(inv, p.code, 1);
+          }
+          return { inventory: inv };
+        }),
     }),
     {
       name: "kato-unitrack",
       storage: createJSONStorage(() => localStorage),
+      // Bumped on every change to the seed shape or the seed contents.
+      // Persisted state migrates forward; existing user data is
+      // preserved unless explicitly stale.
+      version: 2,
+      migrate: (persistedState, oldVersion) => {
+        const s = persistedState as Partial<AppState> & { workingLayout?: AppState["workingLayout"] };
+        // v0 / v1 → v2: introduce the seed inventory. Only replace the
+        // inventory if the user had it empty (i.e. they never customised
+        // it). A user with their own pieces shouldn't lose them.
+        if (oldVersion < 2) {
+          const oldInv = s.inventory;
+          const totalOwned = oldInv
+            ? Object.values(oldInv.entries).reduce((n, e) => n + (e?.owned ?? 0), 0)
+            : 0;
+          if (totalOwned === 0) {
+            s.inventory = buildSeededInventory();
+          }
+          // Also nudge the default board upward for blank layouts.
+          if (
+            s.workingLayout &&
+            s.workingLayout.placements.length === 0 &&
+            s.workingLayout.board_mm.width <= 1500 &&
+            s.workingLayout.board_mm.height <= 800
+          ) {
+            s.workingLayout = { ...s.workingLayout, board_mm: { ...DEFAULT_BOARD_MM } };
+          }
+        }
+        return s as AppState;
+      },
     },
   ),
 );

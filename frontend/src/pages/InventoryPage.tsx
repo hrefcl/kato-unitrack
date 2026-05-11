@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useApp } from "../store";
 import { catalog } from "../catalog";
 import { PieceThumb } from "../components/PieceThumb";
+import { INVENTORY_SEED } from "../data/inventorySeed";
 import { t, useLang } from "../lib/i18n";
 
 export function InventoryPage() {
@@ -10,8 +11,14 @@ export function InventoryPage() {
   const invAdd = useApp((s) => s.invAdd);
   const invRemove = useApp((s) => s.invRemove);
   const invAddSet = useApp((s) => s.invAddSet);
+  const restoreSeed = useApp((s) => s.restoreSeededInventory);
   const [setCode, setSetCode] = useState("20-852");
   const [warning, setWarning] = useState<string | null>(null);
+
+  const seedPieceCount = useMemo(
+    () => INVENTORY_SEED.pieces.reduce((n, p) => n + p.qty, 0),
+    [],
+  );
 
   const rows = useMemo(() => {
     return Object.values(inv.entries)
@@ -31,6 +38,20 @@ export function InventoryPage() {
           </span>
         </div>
         <div className="ml-auto flex items-center gap-2">
+          <button
+            className="btn text-xs"
+            data-testid="restore-seed"
+            onClick={() => {
+              const ok = window.confirm(
+                t("inventory.restoreSeed.confirm", { n: seedPieceCount }),
+              );
+              if (!ok) return;
+              restoreSeed();
+              setWarning(t("inventory.restoreSeed.done"));
+            }}
+          >
+            {t("inventory.restoreSeed")}
+          </button>
           <input
             className="input max-w-[12rem]"
             value={setCode}

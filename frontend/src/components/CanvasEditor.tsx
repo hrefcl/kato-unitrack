@@ -42,6 +42,8 @@ export function CanvasEditor() {
   const addPlacement = useApp((s) => s.layoutAddPlacement);
   const addAttachment = useApp((s) => s.layoutAddAttachment);
   const removePlacement = useApp((s) => s.layoutRemovePlacement);
+  const updatePlacement = useApp((s) => s.layoutUpdatePlacement);
+  const duplicatePlacement = useApp((s) => s.layoutDuplicatePlacement);
   const inv = useApp((s) => s.inventory);
   const invMarkUsed = useApp((s) => s.invMarkUsed);
   const invFreeUsed = useApp((s) => s.invFreeUsed);
@@ -117,6 +119,41 @@ export function CanvasEditor() {
       }
       if (e.key === "m" && pickedCode) {
         setMirrored((m) => !m);
+      }
+      // Edit-on-selected shortcuts. None of these touch the inventory;
+      // they only mutate the placement's pose, which the engine then
+      // re-validates on every paint.
+      if (selected) {
+        const target = layout.placements.find((p) => p.id === selected);
+        if (!target) return;
+        // R / Shift+R — rotate ±15°. (Use a key not used by browser
+        // shortcuts: lowercase r without modifiers; shift+R for inverse.)
+        if (e.key === "r" || e.key === "R") {
+          e.preventDefault();
+          const delta = e.shiftKey ? -15 : 15;
+          updatePlacement(target.id, { rotation_deg: target.rotation_deg + delta });
+          return;
+        }
+        // D — duplicate the selected placement (costs inventory).
+        if (e.key === "d" && !e.metaKey && !e.ctrlKey) {
+          e.preventDefault();
+          const dupId = duplicatePlacement(target.id);
+          if (dupId) setSelected(dupId);
+          return;
+        }
+        // Arrow keys — nudge ±1 mm, Shift → ±10 mm.
+        const step = e.shiftKey ? 10 : 1;
+        let dx = 0, dy = 0;
+        if (e.key === "ArrowLeft") dx = -step;
+        else if (e.key === "ArrowRight") dx = step;
+        else if (e.key === "ArrowUp") dy = step;
+        else if (e.key === "ArrowDown") dy = -step;
+        if (dx !== 0 || dy !== 0) {
+          e.preventDefault();
+          updatePlacement(target.id, {
+            position_mm: [target.position_mm[0] + dx, target.position_mm[1] + dy],
+          });
+        }
       }
     };
     window.addEventListener("keydown", onKey);
