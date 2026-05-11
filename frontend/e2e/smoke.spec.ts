@@ -24,8 +24,8 @@ test.describe("KATO UNITRACK editor smoke", () => {
 
   test("first-run CTA loads the M1 starter set + sample oval", async ({ page }) => {
     // Default route is /editor; the CTA is the empty-state card.
-    await expect(page.getByRole("button", { name: /Load M1 starter set/i })).toBeVisible();
-    await page.getByRole("button", { name: /Load M1 starter set/i }).click();
+    await expect(page.locator('[data-testid="cta-load-starter"]')).toBeVisible();
+    await page.locator('[data-testid="cta-load-starter"]').click();
 
     // The first placement <g> with data-placement-id should appear.
     await expect(page.locator("[data-placement-id]").first()).toBeVisible({ timeout: 8_000 });
@@ -38,11 +38,11 @@ test.describe("KATO UNITRACK editor smoke", () => {
     expect(placements).toBeLessThanOrEqual(40);
 
     // CTA card hides once the layout is populated.
-    await expect(page.getByRole("button", { name: /Load M1 starter set/i })).toBeHidden();
+    await expect(page.locator('[data-testid="cta-load-starter"]')).toBeHidden();
   });
 
   test("inventory reflects the loaded layout (used > 0)", async ({ page }) => {
-    await page.getByRole("button", { name: /Load M1 starter set/i }).click();
+    await page.locator('[data-testid="cta-load-starter"]').click();
     await expect(page.locator("[data-placement-id]").first()).toBeVisible();
 
     await page.locator('[data-testid="nav-inventory"]').click();
@@ -59,14 +59,15 @@ test.describe("KATO UNITRACK editor smoke", () => {
   });
 
   test("save → /layouts shows the row → Export SVG triggers a download", async ({ page }) => {
-    await page.getByRole("button", { name: /Load M1 starter set/i }).click();
+    await page.locator('[data-testid="cta-load-starter"]').click();
     await expect(page.locator("[data-placement-id]").first()).toBeVisible();
 
     // The Save button uses window.alert; swallow it silently.
     page.on("dialog", (d) => {
       void d.accept();
     });
-    await page.getByRole("button", { name: /^Save layout$/i }).click();
+    // Save button text is i18n'd; match either language.
+    await page.getByRole("button", { name: /^(Save layout|Guardar maqueta)$/i }).click();
 
     await page.locator('[data-testid="nav-layouts"]').click();
 
@@ -77,7 +78,7 @@ test.describe("KATO UNITRACK editor smoke", () => {
     // Export SVG triggers a file download.
     const [download] = await Promise.all([
       page.waitForEvent("download"),
-      page.getByRole("button", { name: /^Export SVG$/i }).first().click(),
+      page.getByRole("button", { name: /^(Export SVG|Exportar SVG)$/i }).first().click(),
     ]);
     expect(download.suggestedFilename().toLowerCase().endsWith(".svg")).toBe(true);
   });

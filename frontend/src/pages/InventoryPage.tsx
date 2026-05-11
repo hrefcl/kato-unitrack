@@ -2,8 +2,10 @@ import { useMemo, useState } from "react";
 import { useApp } from "../store";
 import { catalog } from "../catalog";
 import { PieceThumb } from "../components/PieceThumb";
+import { t, useLang } from "../lib/i18n";
 
 export function InventoryPage() {
+  useLang();
   const inv = useApp((s) => s.inventory);
   const invAdd = useApp((s) => s.invAdd);
   const invRemove = useApp((s) => s.invRemove);
@@ -23,15 +25,23 @@ export function InventoryPage() {
     <div className="h-full flex flex-col">
       <div className="px-4 py-3 border-b border-zinc-800 flex items-center gap-3">
         <div className="text-sm text-zinc-300">
-          Total pieces: <span className="text-amber-400 font-medium">{rows.reduce((n, r) => n + r.entry.owned, 0)}</span>
+          {t("inventory.totalPieces")}:{" "}
+          <span className="text-amber-400 font-medium">
+            {rows.reduce((n, r) => n + r.entry.owned, 0)}
+          </span>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <input className="input max-w-[10rem]" value={setCode} onChange={(e) => setSetCode(e.target.value)} placeholder="Set code (e.g. 20-852)" />
+          <input
+            className="input max-w-[12rem]"
+            value={setCode}
+            onChange={(e) => setSetCode(e.target.value)}
+            placeholder={t("inventory.setCode")}
+          />
           <button
             className="btn btn-primary"
             onClick={() => setWarning(invAddSet(setCode, 1))}
           >
-            Add set
+            {t("inventory.addSet")}
           </button>
         </div>
       </div>
@@ -43,18 +53,18 @@ export function InventoryPage() {
       <div className="flex-1 overflow-auto p-3">
         {rows.length === 0 ? (
           <div className="text-zinc-500 text-sm">
-            Your inventory is empty. Add individual pieces from the Catálogo tab,
-            or paste a set code (e.g. <span className="text-amber-400 font-mono">20-852</span>) above.
+            {t("inventory.empty")} <span className="text-amber-400 font-mono">20-852</span>
+            {t("inventory.emptyEnd")}
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead className="text-zinc-500 text-xs uppercase tracking-wider">
               <tr>
-                <th className="text-left pl-2 py-1.5">Code</th>
-                <th className="text-left py-1.5">Name</th>
-                <th className="text-right py-1.5">Owned</th>
-                <th className="text-right py-1.5">Used</th>
-                <th className="text-right py-1.5 pr-2">Available</th>
+                <th className="text-left pl-2 py-1.5">{t("inventory.col.code")}</th>
+                <th className="text-left py-1.5">{t("inventory.col.name")}</th>
+                <th className="text-right py-1.5">{t("inventory.col.owned")}</th>
+                <th className="text-right py-1.5">{t("inventory.col.used")}</th>
+                <th className="text-right py-1.5 pr-2">{t("inventory.col.available")}</th>
                 <th className="py-1.5"></th>
               </tr>
             </thead>

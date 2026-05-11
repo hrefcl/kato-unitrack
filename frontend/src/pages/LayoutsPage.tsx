@@ -8,15 +8,15 @@ import {
   sanitizeFilename,
   svgStringToPngDataUrl,
 } from "../lib/layoutExport";
+import { t, useLang } from "../lib/i18n";
 
 export function LayoutsPage() {
+  useLang();
   const saved = useApp((s) => s.savedLayouts);
   const load = useApp((s) => s.loadSaved);
   const del = useApp((s) => s.deleteSaved);
   const duplicate = useApp((s) => s.duplicateSaved);
 
-  // Per-row "busy" tracker so two simultaneous PNG exports don't
-  // collide and so the right button shows "Exporting…".
   const [busyPng, setBusyPng] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,7 +30,7 @@ export function LayoutsPage() {
       );
       downloadText(`${sanitizeFilename(l.name)}.svg`, svg, "image/svg+xml");
     } catch (err) {
-      setError(`SVG export failed: ${(err as Error).message ?? err}`);
+      setError(t("layouts.export.failed", { kind: "SVG", error: (err as Error).message ?? String(err) }));
     }
   };
 
@@ -48,7 +48,7 @@ export function LayoutsPage() {
       const dataUrl = await svgStringToPngDataUrl(svg, { widthPx: 2000 });
       downloadDataUrl(`${sanitizeFilename(l.name)}.png`, dataUrl);
     } catch (err) {
-      setError(`PNG export failed: ${(err as Error).message ?? err}`);
+      setError(t("layouts.export.failed", { kind: "PNG", error: (err as Error).message ?? String(err) }));
     } finally {
       setBusyPng(null);
     }
@@ -65,13 +65,11 @@ export function LayoutsPage() {
   if (saved.length === 0) {
     return (
       <div className="p-4 text-zinc-500 text-sm">
-        No saved layouts. Build one in the <span className="text-amber-400">Editor</span> tab and
-        click <span className="text-amber-400">Save layout</span>.
+        {t("layouts.empty")}
       </div>
     );
   }
 
-  // Newest first for usability as the list grows.
   const ordered = [...saved].sort(
     (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
   );
@@ -86,10 +84,10 @@ export function LayoutsPage() {
       <table className="w-full text-sm">
         <thead className="text-zinc-500 text-xs uppercase tracking-wider">
           <tr>
-            <th className="text-left py-1.5">Name</th>
-            <th className="text-left py-1.5">Scale</th>
-            <th className="text-left py-1.5">Pieces</th>
-            <th className="text-left py-1.5">Updated</th>
+            <th className="text-left py-1.5">{t("layouts.col.name")}</th>
+            <th className="text-left py-1.5">{t("layouts.col.scale")}</th>
+            <th className="text-left py-1.5">{t("layouts.col.pieces")}</th>
+            <th className="text-left py-1.5">{t("layouts.col.updated")}</th>
             <th></th>
           </tr>
         </thead>
@@ -108,23 +106,23 @@ export function LayoutsPage() {
                 {new Date(l.updated_at).toLocaleString()}
               </td>
               <td className="py-1.5 text-right space-x-2">
-                <button className="btn text-xs" onClick={() => load(l.id)}>Load</button>
-                <button className="btn text-xs" onClick={() => duplicate(l.id)}>Duplicate</button>
+                <button className="btn text-xs" onClick={() => load(l.id)}>{t("layouts.action.load")}</button>
+                <button className="btn text-xs" onClick={() => duplicate(l.id)}>{t("layouts.action.duplicate")}</button>
                 <button className="btn text-xs" onClick={() => handleExportSvg(l.id)}>
-                  Export SVG
+                  {t("layouts.action.exportSvg")}
                 </button>
                 <button
                   className="btn text-xs"
                   disabled={busyPng !== null}
-                  title={busyPng !== null && busyPng !== l.id ? "Another PNG export is in progress" : undefined}
+                  title={busyPng !== null && busyPng !== l.id ? t("layouts.pngBusyTitle") : undefined}
                   onClick={() => handleExportPng(l.id)}
                 >
-                  {busyPng === l.id ? "Exporting…" : "Export PNG"}
+                  {busyPng === l.id ? t("layouts.action.exportPngBusy") : t("layouts.action.exportPng")}
                 </button>
                 <button className="btn text-xs" onClick={() => handleExportJson(l)}>
-                  Export JSON
+                  {t("layouts.action.exportJson")}
                 </button>
-                <button className="btn text-xs" onClick={() => del(l.id)}>Delete</button>
+                <button className="btn text-xs" onClick={() => del(l.id)}>{t("layouts.action.delete")}</button>
               </td>
             </tr>
           ))}

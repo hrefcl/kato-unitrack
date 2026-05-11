@@ -2,8 +2,10 @@ import { useMemo, useState } from "react";
 import { catalog } from "../catalog";
 import { PieceThumb } from "../components/PieceThumb";
 import { useApp } from "../store";
+import { t, useLang } from "../lib/i18n";
 
 export function CatalogPage() {
+  useLang();
   const [q, setQ] = useState("");
   const [scale, setScale] = useState<"all" | "N" | "HO" | "Acc">("all");
   const [category, setCategory] = useState<string>("all");
@@ -27,23 +29,29 @@ export function CatalogPage() {
       <div className="px-4 py-3 border-b border-zinc-800 flex flex-wrap items-center gap-2">
         <input
           className="input max-w-xs"
-          placeholder="Search by code, name, R315-45..."
+          placeholder={t("catalog.searchPlaceholder")}
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <select className="input max-w-[8rem]" value={scale} onChange={(e) => setScale(e.target.value as "all" | "N" | "HO" | "Acc")}>
-          <option value="all">All scales</option>
+        <select
+          className="input max-w-[8rem]"
+          value={scale}
+          onChange={(e) => setScale(e.target.value as "all" | "N" | "HO" | "Acc")}
+        >
+          <option value="all">{t("catalog.allScales")}</option>
           <option value="N">N</option>
           <option value="HO">HO</option>
-          <option value="Acc">Accessory</option>
+          <option value="Acc">{t("catalog.scale.acc")}</option>
         </select>
         <select className="input max-w-[14rem]" value={category} onChange={(e) => setCategory(e.target.value)}>
-          <option value="all">All categories</option>
+          <option value="all">{t("catalog.allCategories")}</option>
           {allCategories.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
         </select>
-        <span className="text-zinc-500 text-xs ml-auto">{filtered.length} of {catalog.all.length}</span>
+        <span className="text-zinc-500 text-xs ml-auto">
+          {t("catalog.count", { shown: filtered.length, total: catalog.all.length })}
+        </span>
       </div>
       <div className="flex-1 overflow-auto p-3 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
         {filtered.map((p) => (
@@ -63,8 +71,11 @@ export function CatalogPage() {
               {p.price_usd !== null && <span>${p.price_usd}</span>}
               {p.pack.raw && <span>{p.pack.raw}</span>}
             </div>
-            <button className="btn text-xs mt-auto" onClick={() => invAdd(p.code, p.pack.quantity ?? 1)}>
-              + Add to inventory ({p.pack.quantity ?? 1})
+            <button
+              className="btn text-xs mt-auto"
+              onClick={() => invAdd(p.code, p.pack.quantity ?? 1)}
+            >
+              {t("catalog.add", { n: p.pack.quantity ?? 1 })}
             </button>
           </div>
         ))}

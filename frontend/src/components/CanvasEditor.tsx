@@ -25,6 +25,7 @@ import {
 import { useApp } from "../store";
 import { catalog } from "../catalog";
 import type { PieceDefinition } from "@kato-unitrack/catalog";
+import { t, useLang } from "../lib/i18n";
 
 const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 4;
@@ -36,6 +37,7 @@ interface ViewState {
 }
 
 export function CanvasEditor() {
+  useLang();
   const layout = useApp((s) => s.workingLayout);
   const addPlacement = useApp((s) => s.layoutAddPlacement);
   const addAttachment = useApp((s) => s.layoutAddAttachment);
@@ -239,21 +241,34 @@ export function CanvasEditor() {
           </g>
         </svg>
         <div className="absolute top-2 left-2 bg-zinc-950/80 border border-zinc-800 rounded px-3 py-2 text-xs space-y-0.5 pointer-events-none">
-          <div>Placements: <span className="text-amber-400">{layout.placements.length}</span></div>
-          <div>Attachments: <span className="text-amber-400">{layout.attachments.length}</span></div>
+          <div>{t("canvas.status.placements")}: <span className="text-amber-400">{layout.placements.length}</span></div>
+          <div>{t("canvas.status.attachments")}: <span className="text-amber-400">{layout.attachments.length}</span></div>
           {valid && (
             <>
               <div className={valid.ok ? "text-emerald-400" : "text-rose-400"}>
-                {valid.ok ? "Geometry OK" : `${valid.errors.length} errors`}
+                {valid.ok ? t("canvas.status.geomOk") : t("canvas.status.geomErrors", { n: valid.errors.length })}
               </div>
-              <div>Open ends: <span className="text-amber-400">{valid.openEnds.length}</span></div>
+              <div>{t("canvas.status.openEnds")}: <span className="text-amber-400">{valid.openEnds.length}</span></div>
             </>
           )}
-          <div className="text-zinc-500">Zoom: {view.zoom.toFixed(2)}×</div>
+          <div className="text-zinc-500">{t("canvas.status.zoom")}: {view.zoom.toFixed(2)}×</div>
         </div>
         <div className="absolute bottom-2 right-2 bg-zinc-950/80 border border-zinc-800 rounded px-3 py-2 text-[11px] text-zinc-400 pointer-events-none">
-          <div><kbd className="text-amber-400">Click</kbd> place &middot; <kbd className="text-amber-400">Wheel</kbd> zoom &middot; <kbd className="text-amber-400">Alt+Drag</kbd> pan</div>
-          <div><kbd className="text-amber-400">M</kbd> mirror picked piece &middot; <kbd className="text-amber-400">Del</kbd> remove selected &middot; <kbd className="text-amber-400">Esc</kbd> cancel</div>
+          <div>
+            <kbd className="text-amber-400">{t("canvas.kbd.click")}</kbd> {t("canvas.help.kbds")
+              .split(" · ").slice(0, 1).join("")
+              .replace("{click} ", "")
+              .replace("{wheel}", "").replace("{alt}", "").replace("{m}", "").replace("{del}", "").replace("{esc}", "")
+              .trim() || ""}
+          </div>
+          <div className="text-zinc-500">
+            <kbd className="text-amber-400">{t("canvas.kbd.click")}</kbd>·
+            <kbd className="text-amber-400 mx-1">{t("canvas.kbd.wheel")}</kbd>·
+            <kbd className="text-amber-400 mx-1">{t("canvas.kbd.alt")}</kbd>·
+            <kbd className="text-amber-400 mx-1">{t("canvas.kbd.m")}</kbd>·
+            <kbd className="text-amber-400 mx-1">{t("canvas.kbd.del")}</kbd>·
+            <kbd className="text-amber-400 mx-1">{t("canvas.kbd.esc")}</kbd>
+          </div>
         </div>
       </div>
     </div>
@@ -324,6 +339,7 @@ function Sidebar({
   mirrored: boolean;
   setMirrored: (b: boolean) => void;
 }) {
+  useLang();
   const inv = useApp((s) => s.inventory);
   const owned: PieceDefinition[] = useMemo(() => {
     return Object.values(inv.entries)
@@ -336,12 +352,12 @@ function Sidebar({
   return (
     <aside className="w-64 border-r border-zinc-800 bg-zinc-950 flex flex-col">
       <div className="px-3 py-2 border-b border-zinc-800 text-xs uppercase tracking-wider text-zinc-500">
-        Available pieces
+        {t("canvas.sidebar.available")}
       </div>
       <div className="flex-1 overflow-auto">
         {owned.length === 0 && (
           <div className="p-3 text-zinc-500 text-xs">
-            Your inventory has no snappable pieces. Go to <span className="text-amber-400">Inventario</span> and add some, then come back here.
+            {t("canvas.sidebar.emptyHint")}
           </div>
         )}
         {owned.map((p) => {
@@ -366,10 +382,10 @@ function Sidebar({
       </div>
       {pickedCode && (
         <div className="px-3 py-2 border-t border-zinc-800 text-xs space-y-1">
-          <div className="text-amber-400">Picked: {pickedCode}</div>
+          <div className="text-amber-400">{t("canvas.sidebar.picked")}: {pickedCode}</div>
           <label className="flex items-center gap-2 text-zinc-300">
             <input type="checkbox" checked={mirrored} onChange={(e) => setMirrored(e.target.checked)} />
-            Mirror (press M to toggle)
+            {t("canvas.sidebar.mirror")}
           </label>
         </div>
       )}

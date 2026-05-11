@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { PieceDefinition } from "@kato-unitrack/catalog";
 import { renderPieceSvg } from "@kato-unitrack/geometry-engine";
+import { t, useLang } from "../lib/i18n";
 
 interface Props {
   piece: PieceDefinition;
@@ -15,6 +16,7 @@ interface Props {
  * lands.
  */
 export function PieceThumb({ piece, size = 88, className }: Props) {
+  useLang();
   const svg = useMemo(() => {
     if (!piece.snappable) return null;
     return renderPieceSvg(piece as never, {
@@ -38,7 +40,7 @@ export function PieceThumb({ piece, size = 88, className }: Props) {
       style={{ width: size, height: size }}
       title="Image needed — see scripts/extract-pdf-assets.mjs"
     >
-      no preview<br />(needs PDF crop)
+      {t("thumb.noPreview")}<br />{t("thumb.noPreviewSub")}
     </div>
   );
 }
