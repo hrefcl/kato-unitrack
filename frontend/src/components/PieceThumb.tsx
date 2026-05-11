@@ -38,7 +38,7 @@ export function PieceThumb({ piece, size = 88, className }: Props) {
     <div
       className={`bg-zinc-900 border border-dashed border-zinc-700 rounded flex items-center justify-center text-zinc-600 text-[10px] text-center px-1 ${className ?? ""}`}
       style={{ width: size, height: size }}
-      title="Image needed — see scripts/extract-pdf-assets.mjs"
+      title={t("thumb.tooltip")}
     >
       {t("thumb.noPreview")}<br />{t("thumb.noPreviewSub")}
     </div>

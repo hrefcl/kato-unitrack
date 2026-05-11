@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../store";
 import { catalog } from "../catalog";
@@ -11,6 +11,7 @@ import {
   type LayoutProposal,
 } from "@kato-unitrack/ai-providers";
 import { validate } from "@kato-unitrack/geometry-engine";
+import { parseInventoryJson } from "../lib/inventoryIo";
 import { t, useLang } from "../lib/i18n";
 
 // Persisted on the user's browser only. Each provider gets its own
@@ -44,6 +45,23 @@ export function GeneratorPage() {
   const board = useApp((s) => s.workingLayout.board_mm);
   const setBoard = useApp((s) => s.layoutSetBoard);
   const loadGen = useApp((s) => s.layoutLoadFromGenerator);
+  const invImport = useApp((s) => s.invImport);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importNote, setImportNote] = useState<string | null>(null);
+
+  // Inventory summary for the active-inventory chip.
+  const invSummary = useMemo(() => {
+    let pieces = 0;
+    let codes = 0;
+    for (const e of Object.values(inv.entries)) {
+      if (e.owned > 0) {
+        pieces += e.owned;
+        codes += 1;
+      }
+    }
+    return { pieces, codes };
+  }, [inv]);
 
   const [running, setRunning] = useState(false);
   const [results, setResults] = useState<ReturnType<typeof generateLayouts>>([]);
@@ -165,6 +183,48 @@ export function GeneratorPage() {
   return (
     <div className="h-full overflow-auto p-4 space-y-4">
       <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
+        <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+          <div className="text-xs">
+            <span className="text-zinc-500">{t("generator.activeInventory")}: </span>
+            <span className="text-amber-400" data-testid="active-inv-summary">
+              {t("generator.activeInventory.summary", {
+                pieces: invSummary.pieces,
+                codes: invSummary.codes,
+                scale: scale,
+              })}
+            </span>
+          </div>
+          <button
+            className="btn text-xs"
+            onClick={() => fileInputRef.current?.click()}
+            data-testid="gen-import-inv"
+          >
+            {t("generator.importInv")}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (!file) return;
+              const text = await file.text();
+              const parsed = parseInventoryJson(text);
+              setImportError(null);
+              setImportNote(null);
+              if (!parsed.ok) {
+                setImportError(`${t("generator.importInv.invalid")} ${parsed.reason}`);
+                return;
+              }
+              invImport(parsed);
+              setImportNote(t("generator.importInv.done", { pieces: parsed.totalPieces }));
+            }}
+          />
+        </div>
+        {importError && <div className="text-rose-300 text-xs mb-2">{importError}</div>}
+        {importNote && <div className="text-emerald-300 text-xs mb-2">{importNote}</div>}
         <div className="text-sm text-zinc-400">{t("generator.intro")}</div>
         <div className="mt-3 flex items-center gap-3 flex-wrap">
           <label className="text-xs text-zinc-500 flex items-center gap-1">
@@ -313,7 +373,7 @@ export function GeneratorPage() {
                 </div>
                 <div className="text-xs text-zinc-300 mt-2">{p.rationale}</div>
                 <div className="text-[11px] text-zinc-500 mt-2">
-                  {p.moves.length} moves
+                  {p.moves.length} {t("generator.moves")}
                 </div>
               </div>
             ))}

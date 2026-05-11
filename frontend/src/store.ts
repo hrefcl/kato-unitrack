@@ -66,6 +66,8 @@ interface AppState {
   invAddSet: (code: string, qty: number) => string | null;
   /** Replace the entire inventory atomically. Used for rollback. */
   invReplace: (inv: Inventory) => void;
+  /** Import an inventory from a parsed JSON export (replaces current). */
+  invImport: (data: { scale: string; entries: Record<string, { owned: number; used: number }> }) => void;
 
   // Layout ops
   layoutSetName: (name: string) => void;
@@ -99,8 +101,11 @@ interface AppState {
 // around it for scenery edits.
 const DEFAULT_BOARD_MM = { width: 2000, height: 1200 };
 
+// Default layout name — kept as "" so the UI placeholder is visible
+// and the user is encouraged to type a real name. saveCurrent() falls
+// back to a localised string when persisting.
 const blankLayout = (): AppState["workingLayout"] => ({
-  name: "Untitled",
+  name: "",
   placements: [],
   attachments: [],
   board_mm: { ...DEFAULT_BOARD_MM },
@@ -124,6 +129,18 @@ export const useApp = create<AppState>()(
         return r.warning ?? null;
       },
       invReplace: (inv) => set({ inventory: inv }),
+      invImport: (data) => {
+        const next: Inventory = {
+          scale: data.scale,
+          entries: Object.fromEntries(
+            Object.entries(data.entries).map(([code, e]) => [
+              code,
+              { code, owned: e.owned, used: e.used },
+            ]),
+          ),
+        };
+        set({ inventory: next });
+      },
 
       layoutSetName: (name) =>
         set((s) => ({ workingLayout: { ...s.workingLayout, name } })),
@@ -202,7 +219,7 @@ export const useApp = create<AppState>()(
         const now = new Date().toISOString();
         const saved: SavedLayout = {
           id,
-          name: wl.name || "Untitled",
+          name: wl.name || "Sin título",
           scale: wl.scale,
           board_mm: wl.board_mm,
           placements: wl.placements,
