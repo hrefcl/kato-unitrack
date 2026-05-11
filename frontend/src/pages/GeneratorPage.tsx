@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useApp } from "../store";
 import { catalog } from "../catalog";
 import { generateLayouts } from "@kato-unitrack/layout-generator";
@@ -6,6 +7,7 @@ import { t, useLang } from "../lib/i18n";
 
 export function GeneratorPage() {
   useLang();
+  const navigate = useNavigate();
   const inv = useApp((s) => s.inventory);
   const scale = useApp((s) => s.workingLayout.scale);
   const board = useApp((s) => s.workingLayout.board_mm);
@@ -87,6 +89,11 @@ export function GeneratorPage() {
                       r.layout.name,
                       r.layout.strategy,
                     );
+                    // Navigate to the editor so the user actually sees
+                    // the layout they just opened. Without this, the
+                    // click silently mutates the store and the user is
+                    // left wondering what happened.
+                    navigate("/editor");
                   }}
                 >
                   {t("generator.openInEditor")}

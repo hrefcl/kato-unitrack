@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { NavLink } from "react-router-dom";
 import { useApp } from "../store";
 import { CanvasEditor } from "../components/CanvasEditor";
 import { catalog } from "../catalog";
@@ -35,14 +36,19 @@ export function EditorPage() {
     };
   }, []);
 
-  const hasOwnedSnappableTrack = useMemo(
+  const snappableCount = useMemo(
     () =>
-      Object.values(inv.entries).some(
-        (e) => e.owned > 0 && catalog.byCode.get(e.code)?.snappable,
+      Object.values(inv.entries).reduce(
+        (n, e) =>
+          e.owned > 0 && catalog.byCode.get(e.code)?.snappable ? n + e.owned : n,
+        0,
       ),
     [inv],
   );
-  const showStarterCTA = wl.placements.length === 0 && !hasOwnedSnappableTrack;
+  const hasOwnedSnappableTrack = snappableCount > 0;
+  const canvasEmpty = wl.placements.length === 0;
+  const showStarterCTA = canvasEmpty && !hasOwnedSnappableTrack;
+  const showHasStockHint = canvasEmpty && hasOwnedSnappableTrack;
 
   const M1_OVAL_MIN_BOARD_MM = { width: 878, height: 630 } as const;
 
@@ -180,6 +186,31 @@ export function EditorPage() {
                   {error}
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {showHasStockHint && (
+          <div
+            className="absolute top-4 left-1/2 -translate-x-1/2 z-10 pointer-events-auto"
+            data-testid="empty-canvas-hint"
+          >
+            <div className="bg-zinc-900/90 border border-zinc-800 rounded-lg shadow-2xl px-5 py-3 max-w-md flex items-center gap-4">
+              <div className="text-left">
+                <div className="text-sm font-medium text-amber-400">
+                  {t("editor.empty.hasStock.title")}
+                </div>
+                <div className="text-xs text-zinc-400 mt-0.5">
+                  {t("editor.empty.hasStock.body", { n: snappableCount })}
+                </div>
+              </div>
+              <NavLink
+                to="/generator"
+                data-testid="cta-open-generator"
+                className="btn btn-primary text-xs whitespace-nowrap"
+              >
+                {t("editor.empty.hasStock.cta")}
+              </NavLink>
             </div>
           </div>
         )}

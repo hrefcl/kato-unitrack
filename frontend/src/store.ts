@@ -14,6 +14,23 @@ import type {
   Placement,
 } from "@kato-unitrack/geometry-engine";
 import { catalog } from "./catalog";
+import { INVENTORY_SEED } from "./data/inventorySeed";
+
+/**
+ * Build the inventory the store starts with for a brand-new installation
+ * (no localStorage persistence yet). Seeds from data/inventory_seed.json
+ * so a fresh clone or a freshly-cleared browser still has something
+ * worth opening. Codes not present in the catalog are skipped silently
+ * — the seed file documents intentional omissions in `unmapped`.
+ */
+function buildSeededInventory(): Inventory {
+  let inv = emptyInventory(INVENTORY_SEED.scale);
+  for (const item of INVENTORY_SEED.pieces) {
+    if (!catalog.byCode.has(item.code)) continue;
+    inv = addPiece(inv, item.code, item.qty, INVENTORY_SEED.source);
+  }
+  return inv;
+}
 
 export interface SavedLayout {
   id: string;
@@ -78,7 +95,7 @@ const blankLayout = (): AppState["workingLayout"] => ({
 export const useApp = create<AppState>()(
   persist(
     (set, get) => ({
-      inventory: emptyInventory("N"),
+      inventory: buildSeededInventory(),
       workingLayout: blankLayout(),
       savedLayouts: [],
 

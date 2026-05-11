@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "scale": "N",
+  "owner": "francisco",
+  "source": "kato_unitrack_inventario_francisco.xlsx",
+  "generated_at": "2026-05-11",
+  "note": "Seed inventory shipped with the project. New installations load this on first run; users can clear or modify freely afterward (the change persists in localStorage).",
+  "pieces": [
+    { "code": "20-000",   "qty": 17, "from": "S248" },
+    { "code": "20-020",   "qty": 2,  "from": "S124" },
+    { "code": "20-026",   "qty": 2,  "from": "S124C", "note": "Ambiguous abbreviation — mapped to S124RE Re-Railer 124mm (closest 124mm with feeder/connection function). Verify against physical pieces." },
+    { "code": "20-030",   "qty": 1,  "from": "S64" },
+    { "code": "20-040",   "qty": 4,  "from": "S62" },
+    { "code": "20-041",   "qty": 1,  "from": "S62F" },
+    { "code": "20-110",   "qty": 8,  "from": "R282-45" },
+    { "code": "20-120",   "qty": 8,  "from": "R315-45" },
+    { "code": "20-160",   "qty": 2,  "from": "R481-15" },
+    { "code": "20-150",   "qty": 2,  "from": "R718-15" },
+    { "code": "20-220",   "qty": 1,  "from": "EP481-15L", "note": "Turnout (the xlsx labelled it 'curva elevada' but the abbreviation is for the #4 Left Electric Turnout)." },
+    { "code": "20-221",   "qty": 1,  "from": "EP481-15R" },
+    { "code": "20-202",   "qty": 1,  "from": "EP718-15L" },
+    { "code": "20-203",   "qty": 1,  "from": "EP718-15R" },
+    { "code": "24-840BK", "qty": 4,  "from": "24-840 / 40500", "note": "Turnout Control Switch. Not a track piece (accessory). Counted in inventory for completeness." },
+    { "code": "20-871",   "qty": 1,  "from": "V12", "note": "V12 Double Track Viaduct Set. Set contents are not auto-decomposed in this build (set-expansion table only covers M1). The set code is recorded as-is." }
+  ],
+  "unmapped": [
+    {
+      "source_abbr": "S69L",
+      "qty": 1,
+      "reason": "No exact match in the v2 catalog. Likely a KATO Japan adjustment track that did not survive the AI extraction. Add manually once the part number is confirmed."
+    },
+    {
+      "source_abbr": "S69R",
+      "qty": 1,
+      "reason": "Same as S69L — left/right pair of short adjustment tracks, not catalogued."
+    }
+  ]
+}
