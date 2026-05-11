@@ -15,7 +15,8 @@
     "@kato-unitrack/catalog": "*",
     "@kato-unitrack/geometry-engine": "*",
     "@kato-unitrack/inventory": "*",
-    "@kato-unitrack/layout-generator": "*"
+    "@kato-unitrack/layout-generator": "*",
+    "openai": "4.61.0"
   },
   "devDependencies": {
     "typescript": "5.5.4",

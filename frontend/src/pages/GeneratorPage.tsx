@@ -119,6 +119,11 @@ export function GeneratorPage() {
     setAiError(null);
     setAiProposals([]);
     try {
+      // Defensive: re-inject the catalog every time. Eliminates the race
+      // where the mount-time useEffect hasn't fired before the user
+      // clicks Sugerir (HMR-after-class-change scenario).
+      if (provider instanceof LocalDemoProvider) provider.setCatalog(catalog);
+
       // Project inventory into the plain {code: available} map the
       // provider interface consumes.
       const availableInventory: Record<string, number> = {};

@@ -84,6 +84,25 @@ test.describe("KATO UNITRACK editor smoke", () => {
     expect(after ?? "").toMatch(/rotate\(/);
   });
 
+  test("AI panel: local-demo produces and materializes a proposal", async ({ page }) => {
+    await page.locator('[data-testid="nav-generator"]').click();
+    // The provider dropdown defaults to local-demo. Click Sugerir.
+    await page.locator('[data-testid="ai-suggest"]').click();
+    // Either at least one Materialize button appears OR an error banner.
+    const errorOrButton = page.locator(
+      '[data-testid="ai-materialize"], .text-rose-300',
+    );
+    await expect(errorOrButton.first()).toBeVisible({ timeout: 6000 });
+    const materializeCount = await page.locator('[data-testid="ai-materialize"]').count();
+    expect(materializeCount).toBeGreaterThan(0);
+
+    // Click Materialize on the top proposal — should land on /editor with placements.
+    await page.locator('[data-testid="ai-materialize"]').first().click();
+    await expect(page.locator("[data-placement-id]").first()).toBeVisible({ timeout: 8000 });
+    const placements = await page.locator("[data-placement-id]").count();
+    expect(placements).toBeGreaterThanOrEqual(8);
+  });
+
   test("save → /layouts shows the row → Export SVG triggers a download", async ({ page }) => {
     // Build a layout via the generator first.
     await page.locator('[data-testid="nav-generator"]').click();

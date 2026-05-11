@@ -20,6 +20,7 @@ import {
 import { generateLayouts } from "@kato-unitrack/layout-generator";
 import type { AIProvider, AIProviderInput, LayoutProposal } from "./types.js";
 import { proposalFromLayout } from "./proposalFromLayout.js";
+import { OpenAIProvider as RealOpenAIProvider } from "./openai.js";
 
 abstract class StubProvider implements AIProvider {
   abstract readonly id: string;
@@ -49,10 +50,11 @@ abstract class StubProvider implements AIProvider {
   }
 }
 
-export class OpenAIProvider extends StubProvider {
-  readonly id = "openai";
-  readonly displayName = "OpenAI";
-}
+// Re-export the real OpenAI implementation under the name the rest of
+// the app already imports. The provider lives in its own file so we
+// don't drag the OpenAI SDK type imports into every consumer.
+export { RealOpenAIProvider as OpenAIProvider };
+
 export class ClaudeProvider extends StubProvider {
   readonly id = "claude";
   readonly displayName = "Anthropic Claude";
@@ -138,7 +140,7 @@ export class LocalDemoProvider implements AIProvider {
 
 export const PROVIDERS: ReadonlyMap<string, AIProvider> = new Map<string, AIProvider>([
   ["local-demo", new LocalDemoProvider()],
-  ["openai", new OpenAIProvider()],
+  ["openai", new RealOpenAIProvider()],
   ["claude", new ClaudeProvider()],
   ["kimi", new KimiProvider()],
 ]);
