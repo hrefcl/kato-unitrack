@@ -1,0 +1,14 @@
+{
+  "name": "@kato-unitrack/scripts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Build scripts for the KATO UNITRACK catalog.",
+  "scripts": {
+    "build:catalog": "node build-catalog.mjs",
+    "extract:pdf-assets": "node extract-pdf-assets.mjs"
+  },
+  "dependencies": {
+    "xlsx": "0.18.5"
+  }
+}

@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root { height: 100%; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+
+.tab-active { color: #fde68a; border-color: #f59e0b; }
+.btn { @apply px-3 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-sm border border-zinc-700; }
+.btn-primary { @apply bg-amber-600 hover:bg-amber-500 border-amber-700 text-zinc-950 font-medium; }
+.input { @apply px-2 py-1 bg-zinc-900 border border-zinc-700 rounded text-sm w-full; }

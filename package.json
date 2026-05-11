@@ -1,0 +1,32 @@
+{
+  "name": "kato-unitrack",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Open-source KATO UNITRACK layout designer. Real geometry, inventory-aware layout generation, pluggable AI providers.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hrefcl/kato-unitrack.git"
+  },
+  "workspaces": [
+    "packages/*",
+    "frontend",
+    "backend",
+    "scripts"
+  ],
+  "scripts": {
+    "build:catalog": "npm --workspace scripts run build:catalog",
+    "build": "npm --workspaces --if-present run build",
+    "test": "npm --workspaces --if-present run test",
+    "dev": "npm --workspace frontend run dev",
+    "dev:backend": "npm --workspace backend run dev",
+    "typecheck": "npm --workspaces --if-present run typecheck"
+  },
+  "devDependencies": {
+    "typescript": "5.5.4",
+    "vitest": "1.6.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
