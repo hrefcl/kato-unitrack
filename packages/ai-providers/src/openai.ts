@@ -24,15 +24,28 @@ import type {
 import { buildAIBrief, briefToMarkdown } from "./brief.js";
 import { materializeProposal } from "./materialize.js";
 
-const DEFAULT_MODEL = "gpt-4o-mini";
+/**
+ * Default model — the most capable in the frontier tier. The user
+ * explicitly asked for "highest-end available, models below produce
+ * worse results", so the list below is sorted by descending capacity:
+ * pick anything lower only if you need cheaper / faster.
+ */
+const DEFAULT_MODEL = "gpt-5.5-pro";
 
-/** Models the user can pick in the UI dropdown. */
 export const OPENAI_MODELS = [
-  { id: "gpt-4o-mini", label: "GPT-4o mini (rápido, económico)" },
-  { id: "gpt-4o", label: "GPT-4o (preciso, costo medio)" },
-  { id: "gpt-4-turbo", label: "GPT-4 Turbo" },
-  { id: "o1-mini", label: "o1 mini (razonamiento)" },
-  { id: "o3-mini", label: "o3 mini (razonamiento)" },
+  // Frontier — recommended for layout design.
+  { id: "gpt-5.5-pro", label: "GPT-5.5 Pro (frontier, máxima precisión)" },
+  { id: "gpt-5.5",     label: "GPT-5.5 (frontier)" },
+  { id: "gpt-5.4-pro", label: "GPT-5.4 Pro" },
+  { id: "gpt-5.4",     label: "GPT-5.4 (más económico)" },
+  { id: "gpt-5.4-mini", label: "GPT-5.4 mini (rápido)" },
+  { id: "gpt-5.4-nano", label: "GPT-5.4 nano (más barato)" },
+  // Previous-gen reasoning.
+  { id: "gpt-5",       label: "GPT-5 (razonamiento)" },
+  { id: "gpt-5-mini",  label: "GPT-5 mini" },
+  { id: "gpt-5-nano",  label: "GPT-5 nano (alta volumen)" },
+  // Older non-reasoning fallback.
+  { id: "gpt-4.1",     label: "GPT-4.1 (no-razonamiento, fallback)" },
 ] as const;
 
 // JSON Schema for a LayoutProposal — what we'll ask the model to emit.
@@ -270,42 +283,119 @@ export class OpenAIProvider implements AIProvider {
       dangerouslyAllowBrowser: true,
     });
 
-    const messages: { role: "system" | "user" | "assistant" | "tool"; content: string; name?: string; tool_call_id?: string; tool_calls?: unknown[] }[] = [
-      { role: "system", content: systemPrompt() },
-      { role: "user", content: userPrompt(input, this.catalog) },
-    ];
+    // Frontier models (gpt-5.x, o1/o3) require the new Responses API.
+    // Older 4.x chat models still use chat.completions. We route based
+    // on the model name prefix.
+    const isResponsesApi = /^(gpt-5|o[13])/.test(this.model);
 
-    const tool = {
-      type: "function" as const,
-      function: {
-        name: "propose_layout",
-        description: "Propose a KATO UNITRACK layout as a symbolic move sequence.",
-        parameters: PROPOSAL_SCHEMA as Record<string, unknown>,
-      },
-    };
+    const sys = systemPrompt();
+    const usr = userPrompt(input, this.catalog);
 
     // Up to 3 attempts. Each round, if the engine rejects the proposal,
     // we pass the error back to the model and ask for a correction.
     const MAX_ATTEMPTS = 3;
     let lastError: string | null = null;
 
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      const response = await client.chat.completions.create({
-        model: this.model,
-        messages: messages as never,
-        tools: [tool],
-        tool_choice: { type: "function", function: { name: "propose_layout" } },
-        temperature: 0.3, // Lower → more deterministic, fewer geometry hallucinations
-      });
+    // For the Responses API we keep `previousResponseId` so the model
+    // sees its own prior tool call + our feedback as conversation.
+    let previousResponseId: string | null = null;
+    // For chat.completions we accumulate messages by hand.
+    const chatMessages: Array<Record<string, unknown>> = [
+      { role: "system", content: sys },
+      { role: "user", content: usr },
+    ];
 
-      const choice = response.choices[0];
-      const tc = choice?.message.tool_calls?.[0];
-      if (!tc || tc.function.name !== "propose_layout") {
-        throw new Error("[openai] model did not produce a propose_layout tool call");
-      }
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       let parsed: LayoutProposal;
+      let toolCallId: string | undefined;
+      let toolFunction: { name: string; arguments: string } | undefined;
+
+      if (isResponsesApi) {
+        // ---- Responses API path ---------------------------------------------
+        const input1 =
+          attempt === 1
+            ? [
+                { role: "system" as const, content: sys },
+                { role: "user" as const, content: usr },
+              ]
+            : [
+                {
+                  role: "user" as const,
+                  content:
+                    `El motor geométrico rechazó la propuesta anterior. Error: "${lastError}". ` +
+                    `Posible causa: la suma de cambios direccionales no llega exactamente a 360°, o un \`link\` une dos conectores que no coinciden en el mundo. ` +
+                    `Corregí el movimiento problemático. Si no podés cerrar el loop con las piezas disponibles, devolvé un layout abierto (sin \`link\` final).`,
+                },
+              ];
+        const opts: Record<string, unknown> = {
+          model: this.model,
+          input: input1,
+          tools: [
+            {
+              type: "function",
+              name: "propose_layout",
+              description: "Propose a KATO UNITRACK layout as a symbolic move sequence.",
+              parameters: PROPOSAL_SCHEMA as Record<string, unknown>,
+            },
+          ],
+          tool_choice: { type: "function", name: "propose_layout" },
+        };
+        if (previousResponseId) opts.previous_response_id = previousResponseId;
+        const resp = await (client as unknown as {
+          responses: { create: (o: Record<string, unknown>) => Promise<unknown> };
+        }).responses.create(opts);
+        const r = resp as {
+          id: string;
+          output?: Array<{
+            type: string;
+            name?: string;
+            arguments?: string;
+            call_id?: string;
+          }>;
+        };
+        previousResponseId = r.id;
+        // Find the function-call output item.
+        const call = r.output?.find(
+          (o) => o.type === "function_call" && o.name === "propose_layout",
+        );
+        if (!call || !call.arguments) {
+          throw new Error("[openai] responses API did not produce a propose_layout call");
+        }
+        toolCallId = call.call_id;
+        toolFunction = { name: call.name ?? "propose_layout", arguments: call.arguments };
+      } else {
+        // ---- chat.completions path (for gpt-4.1 fallback) -------------------
+        const resp = await client.chat.completions.create({
+          model: this.model,
+          messages: chatMessages as never,
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "propose_layout",
+                description: "Propose a KATO UNITRACK layout as a symbolic move sequence.",
+                parameters: PROPOSAL_SCHEMA as Record<string, unknown>,
+              },
+            },
+          ],
+          tool_choice: { type: "function", function: { name: "propose_layout" } },
+          temperature: 0.3,
+        });
+        const tc = resp.choices[0]?.message.tool_calls?.[0];
+        // The v6 SDK distinguishes function tool calls from custom ones.
+        // Narrow by checking `type` before reading `.function`.
+        if (!tc || tc.type !== "function" || tc.function.name !== "propose_layout") {
+          throw new Error("[openai] model did not produce a propose_layout tool call");
+        }
+        toolCallId = tc.id;
+        toolFunction = tc.function;
+      }
+
+      if (!toolFunction) {
+        throw new Error("[openai] tool call missing function payload");
+      }
       try {
-        parsed = JSON.parse(tc.function.arguments) as LayoutProposal;
+        parsed = JSON.parse(toolFunction.arguments) as LayoutProposal;
       } catch (e) {
         throw new Error(`[openai] could not parse tool arguments: ${(e as Error).message}`);
       }
@@ -313,35 +403,30 @@ export class OpenAIProvider implements AIProvider {
         throw new Error("[openai] tool call missing moves array");
       }
 
-      // Try to materialize + validate against the engine. If the engine
-      // accepts → return. If it rejects → feed the error back and let
-      // the model fix it.
       const ok = this.validatePreflight(parsed);
       if (ok.ok) return [parsed];
-
       lastError = ok.reason;
-      if (attempt < MAX_ATTEMPTS) {
-        messages.push({
+
+      if (attempt < MAX_ATTEMPTS && !isResponsesApi) {
+        // Feed the error back into chat.completions for the next attempt.
+        chatMessages.push({
           role: "assistant",
           content: "",
           tool_calls: [
-            {
-              id: tc.id,
-              type: "function",
-              function: tc.function,
-            },
+            { id: toolCallId, type: "function", function: toolFunction },
           ],
         });
-        messages.push({
+        chatMessages.push({
           role: "tool",
-          tool_call_id: tc.id,
-          content: `El motor geométrico rechazó la propuesta. Error: "${ok.reason}". Razón posible: la suma de los cambios direccionales no llega exactamente a 360° (o 0°), o un \`link\` une dos conectores que no coinciden en el mundo. Corregí el movimiento problemático. Si no podés cerrar el loop con las piezas disponibles, devolvé un layout abierto (sin \`link\` final) en vez de uno inválido.`,
+          tool_call_id: toolCallId,
+          content:
+            `El motor geométrico rechazó la propuesta. Error: "${ok.reason}". ` +
+            `Razón posible: la suma de cambios direccionales no llega a 360°, o un \`link\` une dos conectores que no coinciden en el mundo. ` +
+            `Corregí el movimiento problemático.`,
         });
       }
     }
 
-    // After MAX_ATTEMPTS the model couldn't produce a valid proposal.
-    // Surface the last error so the user can see what's wrong.
     throw new Error(
       `[openai] el modelo no produjo una propuesta válida tras ${MAX_ATTEMPTS} intentos. Último error del motor: ${lastError ?? "desconocido"}.`,
     );
