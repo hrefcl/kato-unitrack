@@ -14,14 +14,24 @@
  */
 
 import OpenAI from "openai";
-import type { CatalogIndex, PieceDefinition } from "@kato-unitrack/catalog";
+import type { CatalogIndex } from "@kato-unitrack/catalog";
 import type {
   AIProvider,
   AIProviderInput,
   LayoutProposal,
 } from "./types.js";
+import { buildAIBrief, briefToMarkdown } from "./brief.js";
 
 const DEFAULT_MODEL = "gpt-4o-mini";
+
+/** Models the user can pick in the UI dropdown. */
+export const OPENAI_MODELS = [
+  { id: "gpt-4o-mini", label: "GPT-4o mini (rápido, económico)" },
+  { id: "gpt-4o", label: "GPT-4o (preciso, costo medio)" },
+  { id: "gpt-4-turbo", label: "GPT-4 Turbo" },
+  { id: "o1-mini", label: "o1 mini (razonamiento)" },
+  { id: "o3-mini", label: "o3 mini (razonamiento)" },
+] as const;
 
 // JSON Schema for a LayoutProposal — what we'll ask the model to emit.
 // Hand-written to match ProposalMove in types.ts.
@@ -78,62 +88,46 @@ const PROPOSAL_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-function pieceContract(p: PieceDefinition): string {
-  const conn = p.connections
-    .map((c) => `${c.id}@(${c.position_mm[0].toFixed(1)},${c.position_mm[1].toFixed(1)}) ${c.direction_deg}°`)
-    .join(", ");
-  const meta: string[] = [];
-  if (p.length_mm) meta.push(`L=${p.length_mm}mm`);
-  if (p.radius_mm) meta.push(`R=${p.radius_mm}mm`);
-  if (p.angle_degrees) meta.push(`${p.angle_degrees}°`);
-  if (p.turnout) meta.push(`turnout hand=${p.turnout.hand}`);
-  return `${p.code} (${p.abbreviation ?? "?"}) ${meta.join(" ")} conns=[${conn}]`;
-}
-
 function systemPrompt(): string {
-  return `You are an expert KATO UNITRACK model railroad layout designer.
+  return `Eres un experto diseñador de maquetas KATO UNITRACK.
 
-You will be given:
-- the user's available inventory (KATO Item # → quantity)
-- the board size (mm)
-- the scale (N / HO)
-- optional intent in natural language
+Recibís:
+- un **brief estructurado** del inventario y formas factibles (pre-calculado por el motor)
+- el tamaño del tablero
+- la escala (N o HO)
+- opcionalmente una intención del usuario en lenguaje natural
 
-Your job: produce ONE LayoutProposal that uses as many pieces as possible while forming a geometrically valid layout (closed loops where possible, no self-collisions).
+Tu trabajo: producir UN LayoutProposal que use la mayor cantidad de piezas posible formando una maqueta válida (loops cerrados cuando se pueda, sin auto-colisiones).
 
-A LayoutProposal is a SEQUENCE OF SYMBOLIC MOVES — never world coordinates:
+Un LayoutProposal es una SECUENCIA DE MOVIMIENTOS SIMBÓLICOS — nunca coordenadas:
 
-  - place(ref, code): the first piece. Sits at the origin in piece-local coordinates.
-  - attach(ref, code, toRef, toConn, conn, mirrored?): the new piece's connector \`conn\` is glued to the existing piece toRef's connector toConn. The geometry engine computes the world transform.
-  - link(from, fromConn, to, toConn): connects two existing refs. Used to close a loop (the last piece's free connector mates the first piece's free connector).
+  - place(ref, code): primera pieza, queda en el origen.
+  - attach(ref, code, toRef, toConn, conn, mirrored?): la conexión \`conn\` de la pieza nueva se pega a \`toConn\` de la pieza existente \`toRef\`. El motor geométrico calcula la transformación.
+  - link(from, fromConn, to, toConn): liga dos refs ya colocadas. Se usa para cerrar el loop (último conector libre con el primero).
 
-CRITICAL RULES:
-1. Only use Item # codes present in the inventory list, never invent.
-2. Respect connector identities: straights have A and B. Curves have A and B. Turnouts have A (entry), B (straight out), C (diverging out).
-3. The conn/toConn names refer to connector IDs in the inventory schema. They are A/B for straights and curves; A/B/C for turnouts.
-4. Don't exceed quantities. If inventory has 8 of code X, don't use more than 8.
-5. A KATO oval needs 8×R-45° curves (any radius) plus straights. Each 45° curve advances the layout direction by 45° (CCW by default; set mirrored=true for CW).
-6. For a closed oval, the LAST move should be a \`link\` between the last piece's free connector and the first piece's free connector.
+REGLAS CRÍTICAS:
+1. Usá SOLO códigos KATO presentes en el brief — nunca inventes.
+2. Respetá los conectores: rectas y curvas tienen A y B. Turnouts tienen A (entrada), B (salida recta), C (salida divergente).
+3. NO excedas las cantidades del brief.
+4. El brief ya te dice qué formas son factibles y cuáles no. Empezá por la forma de la lista que esté marcada ✅ y que maximice piezas usadas.
+5. Para cerrar un óvalo, el ÚLTIMO move debería ser un \`link\` entre el conector libre de la última pieza y el conector libre de la primera.
+6. El motor valida con tolerancia 0.5 mm. Si tu propuesta no cierra exactamente, el motor la rechaza.
 
-Output ONLY the structured tool call. Do not write prose outside the tool argument.`;
+Salida: SOLO la llamada estructurada de la tool \`propose_layout\`. No escribas prosa fuera del argumento.`;
 }
 
 function userPrompt(input: AIProviderInput, catalog: CatalogIndex): string {
-  const inventoryLines: string[] = [];
-  for (const [code, qty] of Object.entries(input.availableInventory)) {
-    const p = catalog.byCode.get(code);
-    if (!p) continue;
-    if (!p.snappable) continue; // skip accessories
-    inventoryLines.push(`  ×${qty}  ${pieceContract(p)}`);
-  }
-  return `Inventory:
-${inventoryLines.join("\n")}
+  const brief = buildAIBrief(
+    catalog,
+    input.availableInventory,
+    input.boardMm,
+    input.scale,
+  );
+  return `${briefToMarkdown(brief)}
 
-Board: ${input.boardMm.width} × ${input.boardMm.height} mm
-Scale: ${input.scale}
-${input.userIntent ? `User intent: "${input.userIntent}"` : ""}
-
-Propose ONE layout that uses as many of these pieces as possible.`;
+${input.userIntent ? `## Intención del usuario\n"${input.userIntent}"\n` : ""}
+## Tarea
+Proponé UN layout que use la mayor cantidad de piezas posible respetando el brief.`;
 }
 
 export class OpenAIProvider implements AIProvider {
@@ -141,7 +135,7 @@ export class OpenAIProvider implements AIProvider {
   readonly displayName = "OpenAI";
   private apiKey: string | null = null;
   private catalog: CatalogIndex | null = null;
-  private readonly model: string;
+  private model: string = DEFAULT_MODEL;
 
   constructor(model: string = DEFAULT_MODEL) {
     this.model = model;
@@ -153,6 +147,26 @@ export class OpenAIProvider implements AIProvider {
 
   setCatalog(catalog: CatalogIndex): void {
     this.catalog = catalog;
+  }
+
+  setModel(model: string): void {
+    this.model = model;
+  }
+
+  getModel(): string {
+    return this.model;
+  }
+
+  /** Expose the brief for the UI's "Ver contexto enviado" panel. */
+  buildBrief(input: AIProviderInput) {
+    if (!this.catalog) return null;
+    return buildAIBrief(this.catalog, input.availableInventory, input.boardMm, input.scale);
+  }
+
+  /** Expose the prompt strings the model will see. */
+  buildPromptPreview(input: AIProviderInput): { system: string; user: string } | null {
+    if (!this.catalog) return null;
+    return { system: systemPrompt(), user: userPrompt(input, this.catalog) };
   }
 
   get available(): boolean {
