@@ -5,7 +5,10 @@ import { catalog } from "../catalog";
 import { generateLayouts } from "@kato-unitrack/layout-generator";
 import {
   LocalDemoProvider,
+  OPENAI_MODELS,
+  OpenAIProvider,
   PROVIDERS,
+  buildAIBrief,
   materializeProposal,
   type AIProvider,
   type LayoutProposal,
@@ -71,17 +74,25 @@ export function GeneratorPage() {
   const [providerId, setProviderId] = useState<string>("local-demo");
   const [apiKey, setApiKey] = useState<string>("");
   const [prompt, setPrompt] = useState<string>("");
+  const [aiModel, setAiModel] = useState<string>(OPENAI_MODELS[0]!.id);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiProposals, setAiProposals] = useState<LayoutProposal[]>([]);
+  const [showContext, setShowContext] = useState(false);
 
-  // Wire the runtime catalog into the LocalDemoProvider once. Without
-  // this, the provider can't drive the layout-generator and the panel
-  // throws "catalog not configured".
+  // Wire the runtime catalog into both providers that need one.
   useEffect(() => {
     const local = PROVIDERS.get("local-demo");
     if (local instanceof LocalDemoProvider) local.setCatalog(catalog);
+    const oa = PROVIDERS.get("openai");
+    if (oa instanceof OpenAIProvider) oa.setCatalog(catalog);
   }, []);
+
+  // Push model into OpenAIProvider when the user changes it.
+  useEffect(() => {
+    const oa = PROVIDERS.get("openai");
+    if (oa instanceof OpenAIProvider) oa.setModel(aiModel);
+  }, [aiModel]);
 
   // Pull the saved key for the active provider when the dropdown changes.
   useEffect(() => {
@@ -123,6 +134,7 @@ export function GeneratorPage() {
       // where the mount-time useEffect hasn't fired before the user
       // clicks Sugerir (HMR-after-class-change scenario).
       if (provider instanceof LocalDemoProvider) provider.setCatalog(catalog);
+      if (provider instanceof OpenAIProvider) provider.setCatalog(catalog);
 
       // Project inventory into the plain {code: available} map the
       // provider interface consumes.
@@ -338,6 +350,21 @@ export function GeneratorPage() {
             </label>
           )}
         </div>
+        {providerId === "openai" && (
+          <label className="text-xs text-zinc-500 flex flex-col gap-1 mb-3">
+            {t("ai.model")}
+            <select
+              className="input"
+              value={aiModel}
+              onChange={(e) => setAiModel(e.target.value)}
+              data-testid="ai-model"
+            >
+              {OPENAI_MODELS.map((m) => (
+                <option key={m.id} value={m.id}>{m.label}</option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="text-xs text-zinc-500 flex flex-col gap-1 mb-3">
           {t("ai.prompt")}
           <textarea
@@ -348,7 +375,7 @@ export function GeneratorPage() {
             data-testid="ai-prompt"
           />
         </label>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <button
             className="btn btn-primary text-xs"
             disabled={aiBusy || !hasAnyTrack}
@@ -357,10 +384,96 @@ export function GeneratorPage() {
           >
             {aiBusy ? t("ai.suggesting") : t("ai.suggest")}
           </button>
+          <button
+            className="btn text-xs"
+            onClick={() => setShowContext((v) => !v)}
+            data-testid="ai-toggle-context"
+          >
+            {showContext ? t("ai.hideContext") : t("ai.viewContext")}
+          </button>
           {aiError && (
             <span className="text-rose-300 text-xs flex-1">{aiError}</span>
           )}
         </div>
+
+        {showContext && (() => {
+          const brief = buildAIBrief(
+            catalog,
+            Object.fromEntries(
+              Object.values(inv.entries)
+                .filter((e) => e.owned - e.used > 0)
+                .map((e) => [e.code, e.owned - e.used]),
+            ),
+            board,
+            scale,
+          );
+          return (
+            <div className="mt-3 bg-zinc-950 border border-zinc-800 rounded p-3 text-xs space-y-3" data-testid="ai-context-panel">
+              <div>
+                <div className="text-amber-400 font-medium mb-1">{t("ai.briefHeading")}</div>
+                <div className="text-zinc-400">
+                  Total: <span className="text-zinc-200">{brief.totalPieces} piezas</span>{" "}
+                  · <span className="text-zinc-200">{brief.snappableCount} snappables</span>
+                  {" · "}{brief.board.width_mm}×{brief.board.height_mm} mm
+                  {" · "}escala {brief.scale}
+                </div>
+              </div>
+              <div>
+                <div className="text-amber-400 font-medium mb-1">{t("ai.brief.feasible")}</div>
+                <ul className="text-zinc-300 space-y-0.5">
+                  {brief.feasibleShapes.map((f, i) => (
+                    <li key={i}>
+                      <span className={f.canBuild ? "text-emerald-400" : "text-rose-400"}>
+                        {f.canBuild ? "✓" : "✗"}
+                      </span>{" "}
+                      <strong>{f.name}</strong> — {f.description}
+                      {f.reason && <span className="text-zinc-500"> · {f.reason}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              {brief.curves.length > 0 && (
+                <div>
+                  <div className="text-amber-400 font-medium mb-1">{t("ai.brief.curves")}</div>
+                  <ul className="text-zinc-300 space-y-0.5">
+                    {brief.curves.map((c) => (
+                      <li key={c.code}>
+                        <span className={c.canCloseSolo ? "text-emerald-400" : "text-zinc-500"}>
+                          {c.canCloseSolo ? "✓" : "·"}
+                        </span>{" "}
+                        {c.code} ({c.abbreviation}) R={c.radius_mm}mm {c.angle_degrees}° · stock {c.available} · necesita {c.neededFor360} para 360°
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {brief.straights.length > 0 && (
+                <div>
+                  <div className="text-amber-400 font-medium mb-1">{t("ai.brief.straights")}</div>
+                  <ul className="text-zinc-300 space-y-0.5">
+                    {brief.straights.map((s) => (
+                      <li key={s.code}>
+                        {s.code} ({s.abbreviation}) L={s.length_mm}mm · stock {s.available}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {brief.turnouts.length > 0 && (
+                <div>
+                  <div className="text-amber-400 font-medium mb-1">{t("ai.brief.turnouts")}</div>
+                  <ul className="text-zinc-300 space-y-0.5">
+                    {brief.turnouts.map((tn) => (
+                      <li key={tn.code}>
+                        {tn.code} ({tn.abbreviation}) R={tn.radius_mm}mm {tn.diverge_deg}° hand={tn.hand} · stock {tn.available}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {aiProposals.length > 0 && (
           <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
